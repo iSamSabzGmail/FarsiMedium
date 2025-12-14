@@ -15,6 +15,7 @@ export default function AdminPage() {
   const [allArticles, setAllArticles] = useState<any[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
+  // --- احراز هویت ---
   useEffect(() => {
     const isLoggedIn = localStorage.getItem('medium_admin_auth');
     if (isLoggedIn === 'true') setIsAuthenticated(true);
@@ -35,6 +36,7 @@ export default function AdminPage() {
     setPassword('');
   };
 
+  // --- دریافت داده‌ها ---
   useEffect(() => {
     if (!isAuthenticated) return;
     if (activeTab === 'requests') {
@@ -50,6 +52,7 @@ export default function AdminPage() {
     setAllArticles(data || []);
   };
 
+  // --- لاجیک انتخاب و حذف ---
   const toggleSelect = (id: string) => { if (selectedIds.includes(id)) setSelectedIds(selectedIds.filter(item => item !== id)); else setSelectedIds([...selectedIds, id]); };
   const toggleSelectAll = () => { if (selectedIds.length === allArticles.length) setSelectedIds([]); else setSelectedIds(allArticles.map(a => a.id)); };
   const deleteSelected = async () => {
@@ -58,7 +61,7 @@ export default function AdminPage() {
     if (!error) { setAllArticles(allArticles.filter(a => !selectedIds.includes(a.id))); setSelectedIds([]); alert('🗑️ پاک شدند!'); }
   };
 
-  // --- ربات نویسنده (نسخه کلاینت برای گیت‌هاب) ---
+  // --- ربات نویسنده (نسخه اصلاح شده با پروکسی قوی) ---
   const [autoUrl, setAutoUrl] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [processLog, setProcessLog] = useState('');
@@ -67,25 +70,31 @@ export default function AdminPage() {
     if (!autoUrl.length) { alert('لینک را وارد کنید'); return; }
     
     setIsProcessing(true);
-    setProcessLog('⏳ اتصال به سرویس Jina (استخراج متن)...');
+    setProcessLog('⏳ اتصال به سرور Jina (استخراج متن)...');
 
     try {
-      // ۱. استفاده از سرویس Jina برای تبدیل مقاله به متن خام
-      // از پروکسی allorigins استفاده میکنیم تا ارور CORS ندهد
+      // ۱. ساخت لینک Jina
       const jinaUrl = `https://r.jina.ai/${autoUrl}`;
-      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(jinaUrl)}`;
+      
+      // ۲. استفاده از پروکسی قوی‌تر (CorsProxy)
+      // این سرویس مستقیم متن رو برمی‌گردونه و باگ Oops نداره
+      const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(jinaUrl)}`;
       
       const response = await fetch(proxyUrl);
-      const data = await response.json();
       
-      if (!data.contents) throw new Error('محتوا دانلود نشد. لینک بررسی شود.');
+      if (!response.ok) throw new Error('خطا در دانلود مقاله. وضعیت: ' + response.status);
       
-      // محتوای بازگشتی از Jina معمولا متن تمیز مارک‌داون است
-      const articleText = data.contents.substring(0, 20000); 
+      // دریافت متن خام (دیگه جیسون نیست)
+      const articleText = await response.text();
+
+      // چک کردن اینکه آیا متن واقعا دانلود شده؟
+      if (articleText.length < 200 || articleText.includes('Access Denied')) {
+        throw new Error('متن مقاله دانلود نشد یا دسترسی مسدود است.');
+      }
 
       setProcessLog('🤖 ارسال به Gemini برای ترجمه...');
 
-      // ۲. ارسال مستقیم به Gemini (بدون سرور واسط)
+      // ۳. ارسال به Gemini
       const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
       if(!apiKey) throw new Error('کلید Gemini پیدا نشد. فایل .env.local را چک کنید');
 
@@ -113,7 +122,7 @@ export default function AdminPage() {
         - source_url: "${autoUrl}".
         
         Article Content from Jina:
-        ${articleText}
+        ${articleText.substring(0, 25000)}
       `;
 
       const aiResult = await model.generateContent(prompt);
@@ -121,11 +130,17 @@ export default function AdminPage() {
       
       // تمیز کردن JSON
       const cleanJson = aiResponse.replace(/```json/g, '').replace(/```/g, '').trim();
-      const articleData = JSON.parse(cleanJson);
+      
+      let articleData;
+      try {
+        articleData = JSON.parse(cleanJson);
+      } catch (e) {
+        throw new Error('هوش مصنوعی پاسخ نامعتبر داد. لطفاً دوباره تلاش کنید.');
+      }
 
       setProcessLog('💾 ذخیره در دیتابیس...');
 
-      // ۳. ذخیره
+      // ۴. ذخیره
       const finalSlug = articleData.slug || articleData.title.replace(/\s+/g, '-').toLowerCase();
       const { error } = await supabase.from('articles').insert([{
         ...articleData,
@@ -219,7 +234,7 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* بخش‌های manage و requests مثل قبل ... (بدون تغییر) */}
+        {/* بخش‌های manage و requests مثل قبل ... */}
         {activeTab === 'manage' && (
           <div className="space-y-4 animate-in fade-in">
              <div className="flex justify-between items-center bg-blue-900/20 border border-blue-500/20 p-4 rounded-xl text-sm">
