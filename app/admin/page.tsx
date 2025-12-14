@@ -61,7 +61,7 @@ export default function AdminPage() {
     if (!error) { setAllArticles(allArticles.filter(a => !selectedIds.includes(a.id))); setSelectedIds([]); alert('🗑️ پاک شدند!'); }
   };
 
-  // --- ربات نویسنده (نسخه اصلاح شده: Gemini Pro) ---
+  // --- ربات نویسنده (نسخه Gemini 1.5 Flash) ---
   const [autoUrl, setAutoUrl] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [processLog, setProcessLog] = useState('');
@@ -90,15 +90,15 @@ export default function AdminPage() {
         throw new Error('متن مقاله دانلود نشد یا دسترسی مسدود است.');
       }
 
-      setProcessLog('🤖 ارسال به Gemini (مدل Pro) برای ترجمه...');
+      setProcessLog('🤖 ارسال به Gemini (مدل Flash) برای ترجمه...');
 
       // ۳. ارسال به Gemini
       const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
       if(!apiKey) throw new Error('کلید Gemini پیدا نشد. فایل .env.local را چک کنید');
 
       const genAI = new GoogleGenerativeAI(apiKey);
-      // 👇👇👇 تغییر مهم: استفاده از مدل پایدار gemini-pro 👇👇👇
-      const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+      // 👇👇👇 تغییر نهایی و مهم: استفاده از مدل 1.5 Flash 👇👇👇
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
       const prompt = `
         You are a professional Persian tech editor.
@@ -121,7 +121,7 @@ export default function AdminPage() {
         - source_url: "${autoUrl}".
         
         Article Content from Jina:
-        ${articleText.substring(0, 20000)}
+        ${articleText.substring(0, 25000)}
       `;
 
       const aiResult = await model.generateContent(prompt);
