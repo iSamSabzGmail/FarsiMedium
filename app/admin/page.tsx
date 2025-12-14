@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ArrowLeft, Lock, Wand2, Users, Copy, Check, Layers, Trash2, FileText, Eye, LogOut, Square, CheckSquare, Loader2, Link as LinkIcon } from 'lucide-react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
@@ -57,7 +58,7 @@ export default function AdminPage() {
     if (!error) { setAllArticles(allArticles.filter(a => !selectedIds.includes(a.id))); setSelectedIds([]); alert('🗑️ پاک شدند!'); }
   };
 
-  // --- بخش هوشمند جدید (متصل به سرور) ---
+  // --- ربات نویسنده (نسخه کلاینت برای گیت‌هاب) ---
   const [autoUrl, setAutoUrl] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [processLog, setProcessLog] = useState('');
@@ -66,25 +67,65 @@ export default function AdminPage() {
     if (!autoUrl.length) { alert('لینک را وارد کنید'); return; }
     
     setIsProcessing(true);
-    setProcessLog('🚀 اتصال به سرور هوشمند...');
+    setProcessLog('⏳ اتصال به سرویس Jina (استخراج متن)...');
 
     try {
-      // ارسال درخواست به API Route خودمان
-      const response = await fetch('/api/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: autoUrl })
-      });
+      // ۱. استفاده از سرویس Jina برای تبدیل مقاله به متن خام
+      // از پروکسی allorigins استفاده میکنیم تا ارور CORS ندهد
+      const jinaUrl = `https://r.jina.ai/${autoUrl}`;
+      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(jinaUrl)}`;
+      
+      const response = await fetch(proxyUrl);
+      const data = await response.json();
+      
+      if (!data.contents) throw new Error('محتوا دانلود نشد. لینک بررسی شود.');
+      
+      // محتوای بازگشتی از Jina معمولا متن تمیز مارک‌داون است
+      const articleText = data.contents.substring(0, 20000); 
 
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'خطا در پردازش');
-      }
+      setProcessLog('🤖 ارسال به Gemini برای ترجمه...');
 
-      setProcessLog('✅ دریافت شد! در حال ذخیره...');
-      const articleData = await response.json();
+      // ۲. ارسال مستقیم به Gemini (بدون سرور واسط)
+      const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+      if(!apiKey) throw new Error('کلید Gemini پیدا نشد. فایل .env.local را چک کنید');
 
-      // ذخیره در Supabase
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+      const prompt = `
+        You are a professional Persian tech editor.
+        Task: Rewrite this article for a Persian blog.
+        
+        Rules:
+        1. Language: Fluent, modern Persian (Farsi). NO Google Translate style.
+        2. Tone: Educational and engaging.
+        3. Structure: Use Markdown (# Title, ## Subtitle, - List).
+        4. Output: ONLY a valid JSON object.
+
+        JSON Fields:
+        - title: Catchy Persian title.
+        - slug: English slug (kebab-case).
+        - summary: 2-3 lines Persian summary.
+        - content: The rewritten article body in Markdown. Add "Source: [Link]" at the end.
+        - category: One of [تکنولوژی, توسعه فردی, هوش مصنوعی, استارتاپ, برنامه‌نویسی].
+        - read_time: e.g. "۵ دقیقه".
+        - cover_url: Find a relevant Unsplash image URL based on topic.
+        - source_url: "${autoUrl}".
+        
+        Article Content from Jina:
+        ${articleText}
+      `;
+
+      const aiResult = await model.generateContent(prompt);
+      const aiResponse = aiResult.response.text();
+      
+      // تمیز کردن JSON
+      const cleanJson = aiResponse.replace(/```json/g, '').replace(/```/g, '').trim();
+      const articleData = JSON.parse(cleanJson);
+
+      setProcessLog('💾 ذخیره در دیتابیس...');
+
+      // ۳. ذخیره
       const finalSlug = articleData.slug || articleData.title.replace(/\s+/g, '-').toLowerCase();
       const { error } = await supabase.from('articles').insert([{
         ...articleData,
@@ -94,13 +135,13 @@ export default function AdminPage() {
 
       if (error) throw error;
 
-      alert('✅ مقاله با موفقیت منتشر شد!');
+      alert('✅ مقاله با موفقیت ترجمه و منتشر شد!');
       setAutoUrl('');
       setProcessLog('');
       
     } catch (error: any) {
       console.error(error);
-      alert('❌ خطا: ' + error.message);
+      alert('❌ خطا: ' + (error.message || 'مشکل در ارتباط'));
       setProcessLog('');
     } finally {
       setIsProcessing(false);
@@ -145,7 +186,7 @@ export default function AdminPage() {
                 <div className="p-3 bg-blue-500/20 rounded-xl"><Wand2 size={28} /></div>
                 <div>
                   <h3 className="font-bold text-xl text-white">تولید محتوای خودکار</h3>
-                  <p className="text-sm text-gray-400">لینک مقاله (Medium) را بدهید تا سرور آن را پردازش کند.</p>
+                  <p className="text-sm text-gray-400">لینک مقاله را وارد کنید (Jina + Gemini)</p>
                 </div>
               </div>
 
@@ -170,7 +211,7 @@ export default function AdminPage() {
                   {isProcessing ? (
                     <><Loader2 className="animate-spin"/> {processLog}</>
                   ) : (
-                    <>شروع پردازش سرور <ArrowLeft/></>
+                    <>شروع پردازش <ArrowLeft/></>
                   )}
                 </button>
               </div>
@@ -178,7 +219,7 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* بقیه تب‌ها (مدیریت و درخواست) مثل قبل ... */}
+        {/* بخش‌های manage و requests مثل قبل ... (بدون تغییر) */}
         {activeTab === 'manage' && (
           <div className="space-y-4 animate-in fade-in">
              <div className="flex justify-between items-center bg-blue-900/20 border border-blue-500/20 p-4 rounded-xl text-sm">
