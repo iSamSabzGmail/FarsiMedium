@@ -1,20 +1,18 @@
 'use client';
 import { useEffect, useState, Suspense } from 'react';
-import { useSearchParams } from 'next/navigation'; // ابزار گرفتن آدرس جدید
+import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { Clock, Calendar, BookOpen, Share2, Home, Copy, Check, Twitter, Send, AlertTriangle, ListChecks, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { motion, AnimatePresence, useScroll, useSpring } from 'framer-motion';
 
-// اینترفیس مقاله
 interface Article {
   id: string; title: string; summary: string; content: string; cover_url: string | null; category: string | null; author: string | null; created_at: string; read_time: string | null; slug: string | null; source_url: string | null;
 }
 
-// کامپوننت داخلی که از سرچ پارامتر استفاده می‌کنه
 function ArticleViewer() {
   const searchParams = useSearchParams();
-  const slug = searchParams.get('id'); // گرفتن شناسه از آدرس
+  const slug = searchParams.get('id');
 
   const [article, setArticle] = useState<Article | null>(null);
   const [related, setRelated] = useState<Article[]>([]);
@@ -22,35 +20,26 @@ function ArticleViewer() {
   const [showShareMenu, setShowShareMenu] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // نوار پیشرفت
   const { scrollYProgress } = useScroll();
   const scaleX = useSpring(scrollYProgress, { stiffness: 100, damping: 30, restDelta: 0.001 });
 
   useEffect(() => {
     if (!slug) return;
-
     async function fetchData() {
       setLoading(true);
-      // ۱. دریافت مقاله (همیشه زنده از دیتابیس)
       let { data: art } = await supabase.from('articles').select('*').eq('slug', slug).single();
-      
-      // اگر با اسلاگ پیدا نشد، با ID چک کن
       if (!art) {
          const { data: artById } = await supabase.from('articles').select('*').eq('id', slug).single();
          art = artById;
       }
-
       if (art) {
         setArticle(art as Article);
         document.title = `${art.title} | مدیوم فارسی`;
-        
-        // ۲. دریافت مقالات مرتبط
         const { data: rel } = await supabase.from('articles').select('*').eq('category', art.category).neq('id', art.id).limit(3);
         if (rel) setRelated(rel as Article[]);
       }
       setLoading(false);
     }
-
     fetchData();
   }, [slug]);
 
@@ -64,7 +53,7 @@ function ArticleViewer() {
     <div className="min-h-screen text-gray-200 font-vazir pb-20" dir="rtl">
       <motion.div className="fixed top-0 left-0 right-0 h-1 bg-blue-500 origin-right z-[60]" style={{ scaleX }} />
 
-      {/* نوبار */}
+      {/* Navbar */}
       <nav className="sticky top-0 z-50 py-4 px-4">
          <div className="max-w-7xl mx-auto h-16 flex items-center justify-between bg-[#111]/80 backdrop-blur-xl rounded-2xl border border-white/10 px-6 shadow-2xl">
             <Link href="/" className="flex items-center gap-2 group">
@@ -88,61 +77,67 @@ function ArticleViewer() {
          </div>
       </nav>
 
-      <article className="max-w-3xl mx-auto px-4 mt-6">
-        <div className="bg-[#0a0a0a] border border-white/10 rounded-[2rem] p-6 md:p-10 shadow-2xl relative overflow-hidden">
+      {/* 👇👇👇 تغییرات عرض صفحه اینجاست 👇👇👇 */}
+      {/* قبلا max-w-3xl بود، الان max-w-6xl شد تا پهن‌تر بشه */}
+      {/* px-4 برای موبایل و md:px-8 برای تبلت و دسکتاپ که از بغل نچسبه */}
+      <article className="max-w-6xl mx-auto px-4 md:px-8 mt-6">
+        
+        <div className="bg-[#0a0a0a] border border-white/10 rounded-[2rem] p-6 md:p-12 shadow-2xl relative overflow-hidden">
           <div className="absolute top-0 right-0 w-full h-64 bg-gradient-to-b from-blue-900/10 to-transparent pointer-events-none"></div>
           
-          <header className="mb-8 space-y-6 relative z-10">
-            <Link href="/" className="inline-block bg-blue-500/10 text-blue-400 px-3 py-1 rounded-lg text-sm font-bold border border-blue-500/20">{article.category || 'عمومی'}</Link>
-            <h1 className="text-3xl md:text-5xl font-black text-white leading-tight">{article.title}</h1>
-            <div className="flex flex-wrap items-center gap-6 text-gray-400 text-sm border-b border-white/5 pb-8">
-              <span className="font-bold text-white flex items-center gap-2"><div className="w-6 h-6 rounded-full bg-gray-800 flex items-center justify-center text-xs text-gray-300">{article.author?.[0]}</div>{article.author}</span>
+          <header className="mb-10 space-y-6 relative z-10 text-center md:text-right">
+            <Link href="/" className="inline-block bg-blue-500/10 text-blue-400 px-4 py-1.5 rounded-xl text-sm font-bold border border-blue-500/20">{article.category || 'عمومی'}</Link>
+            <h1 className="text-3xl md:text-6xl font-black text-white leading-tight">{article.title}</h1>
+            <div className="flex flex-wrap items-center justify-center md:justify-start gap-6 text-gray-400 text-sm border-b border-white/5 pb-8">
+              <span className="font-bold text-white flex items-center gap-2"><div className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center text-xs text-gray-300 font-bold">{article.author?.[0]}</div>{article.author}</span>
               <span className="flex items-center gap-1.5"><Clock size={16} /> {article.read_time}</span>
               <span className="flex items-center gap-1.5"><Calendar size={16} /> {new Date(article.created_at).toLocaleDateString('fa-IR')}</span>
             </div>
           </header>
 
-          {article.cover_url && <div className="mb-10 rounded-3xl overflow-hidden shadow-lg border border-white/5"><img src={article.cover_url} alt={article.title} className="w-full h-auto object-cover" /></div>}
+          {article.cover_url && <div className="mb-12 rounded-3xl overflow-hidden shadow-lg border border-white/5"><img src={article.cover_url} alt={article.title} className="w-full h-auto object-cover max-h-[600px] w-full" /></div>}
 
-          <div className="mb-10 bg-blue-900/10 border border-blue-500/20 rounded-2xl p-6 relative z-10">
-            <div className="flex items-center gap-2 text-blue-300 font-bold mb-3"><ListChecks size={20} /><h3>خلاصه ۳۰ ثانیه‌ای</h3></div>
-            <p className="text-gray-300 leading-relaxed text-sm">{article.summary}</p>
+          <div className="mb-12 bg-blue-900/10 border border-blue-500/20 rounded-2xl p-6 relative z-10">
+            <div className="flex items-center gap-2 text-blue-300 font-bold mb-3"><ListChecks size={22} /><h3>خلاصه ۳۰ ثانیه‌ای</h3></div>
+            <p className="text-gray-300 leading-loose text-base md:text-lg">{article.summary}</p>
           </div>
 
-          <div className="prose prose-lg prose-invert max-w-none prose-p:leading-8 prose-p:text-gray-300 prose-headings:text-white prose-a:text-blue-400 relative z-10">
+          {/* متن مقاله: max-w-none رو اضافه کردم تا کل عرض رو پر کنه */}
+          <div className="prose prose-lg md:prose-xl prose-invert max-w-none prose-p:leading-10 prose-p:text-gray-300 prose-headings:text-white prose-a:text-blue-400 relative z-10">
             {article.content ? article.content.split('\n').map((paragraph: string, index: number) => {
-               if (paragraph.startsWith('# ')) return <h1 key={index} className="mt-12 mb-6">{paragraph.replace('# ', '')}</h1>;
-               if (paragraph.startsWith('## ')) return <h2 key={index} className="mt-10 mb-4 text-blue-100">{paragraph.replace('## ', '')}</h2>;
-               if (paragraph.startsWith('- ')) return <li key={index} className="list-disc mr-4 mb-2 text-gray-300">{paragraph.replace('- ', '')}</li>;
+               if (paragraph.startsWith('# ')) return <h1 key={index} className="mt-16 mb-8 font-black">{paragraph.replace('# ', '')}</h1>;
+               if (paragraph.startsWith('## ')) return <h2 key={index} className="mt-12 mb-6 text-blue-100 border-r-4 border-blue-600 pr-4">{paragraph.replace('## ', '')}</h2>;
+               if (paragraph.startsWith('- ')) return <li key={index} className="list-disc mr-6 mb-3 text-gray-300">{paragraph.replace('- ', '')}</li>;
                if (paragraph.includes('منبع:')) return null;
-               return <p key={index} className="mb-6">{paragraph}</p>;
+               return <p key={index} className="mb-8">{paragraph}</p>;
             }) : <p>محتوایی نیست.</p>}
           </div>
 
-          <div className="mt-16 pt-8 border-t border-white/10 relative z-10">
-            <div className="bg-white/5 rounded-xl p-4 text-xs text-gray-500 flex gap-3 items-start leading-5">
-              <AlertTriangle size={24} className="text-yellow-600 shrink-0" />
+          <div className="mt-20 pt-10 border-t border-white/10 relative z-10">
+            <div className="bg-white/5 rounded-2xl p-6 text-sm text-gray-500 flex gap-4 items-start leading-6">
+              <AlertTriangle size={28} className="text-yellow-600 shrink-0" />
               <div>
-                <p className="mb-2 font-bold text-gray-400">سلب مسئولیت کپی‌رایت:</p>
-                <p>این مطلب بازنویسی شده است. {article.source_url && <a href={article.source_url} target="_blank" className="text-blue-500 hover:underline">مشاهده منبع اصلی</a>}</p>
+                <p className="mb-2 font-bold text-gray-300 text-base">سلب مسئولیت کپی‌رایت:</p>
+                <p>این مطلب بازنویسی و خلاصه شده است. تمامی حقوق متعلق به نویسنده اصلی است. {article.source_url && <a href={article.source_url} target="_blank" className="text-blue-500 hover:underline font-bold">مشاهده منبع اصلی در Medium</a>}</p>
               </div>
             </div>
           </div>
         </div>
 
+        {/* مقالات مرتبط (۳ ستونه در دسکتاپ، ۱ ستونه در موبایل) */}
         {related.length > 0 && (
-          <div className="mt-20">
-            <h3 className="text-2xl font-black text-white mb-8 flex items-center gap-3"><span className="w-1 h-8 bg-blue-500 rounded-full"></span>پیشنهاد مطالعه</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="mt-24">
+            <h3 className="text-3xl font-black text-white mb-10 flex items-center gap-3"><span className="w-1.5 h-8 bg-blue-500 rounded-full"></span>پیشنهاد مطالعه</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               {related.map((post) => (
-                <Link key={post.id} href={`/article?id=${post.slug || post.id}`} className="group bg-[#0a0a0a] border border-white/10 rounded-2xl overflow-hidden hover:border-blue-500/30 transition-all">
+                <Link key={post.id} href={`/article?id=${post.slug || post.id}`} className="group bg-[#0a0a0a] border border-white/10 rounded-3xl overflow-hidden hover:border-blue-500/40 transition-all hover:-translate-y-2 shadow-xl">
                   <div className="aspect-video relative">
                     {post.cover_url && <img src={post.cover_url} alt={post.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"/>}
-                    <div className="absolute top-2 right-2 bg-black/60 px-2 py-1 rounded-lg text-[10px] text-white backdrop-blur">{post.category}</div>
+                    <div className="absolute top-3 right-3 bg-black/70 px-3 py-1 rounded-xl text-xs text-white backdrop-blur border border-white/10">{post.category}</div>
                   </div>
-                  <div className="p-4">
-                    <h4 className="font-bold text-gray-200 line-clamp-2 group-hover:text-blue-400 transition-colors">{post.title}</h4>
-                    <div className="flex items-center gap-1 text-blue-400 text-xs mt-3 font-bold">بخوانید <ArrowLeft size={14}/></div>
+                  <div className="p-6">
+                    <h4 className="font-bold text-lg text-gray-200 line-clamp-2 group-hover:text-blue-400 transition-colors leading-snug">{post.title}</h4>
+                    <div className="flex items-center gap-1 text-blue-400 text-sm mt-4 font-bold">بخوانید <ArrowLeft size={16}/></div>
                   </div>
                 </Link>
               ))}
@@ -154,10 +149,9 @@ function ArticleViewer() {
   );
 }
 
-// کامپوننت اصلی که دورش Suspense داره (برای جلوگیری از ارور بیلد)
 export default function ArticlePage() {
   return (
-    <Suspense fallback={<div className="text-white text-center mt-20">در حال بارگذاری...</div>}>
+    <Suspense fallback={<div className="text-white text-center mt-20 flex flex-col items-center gap-2"><div className="w-8 h-8 border-4 border-blue-500 rounded-full animate-spin border-t-transparent"></div><p>در حال بارگذاری...</p></div>}>
       <ArticleViewer />
     </Suspense>
   );
