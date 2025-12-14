@@ -1,35 +1,30 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Lock, Wand2, Users, Copy, Check, Layers, Trash2, FileText, Eye, LogOut, Square, CheckSquare } from 'lucide-react';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { ArrowLeft, Lock, Wand2, Users, Copy, Check, Layers, Trash2, FileText, Eye, LogOut, Square, CheckSquare, Loader2, Link as LinkIcon } from 'lucide-react';
 import Link from 'next/link';
-import Navbar from '@/components/Navbar'; // نوبار اصلی سایت
+import Navbar from '@/components/Navbar';
 
 export default function AdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
   const [activeTab, setActiveTab] = useState<'create' | 'requests' | 'manage'>('create');
   
-  // داده‌ها
   const [requests, setRequests] = useState<any[]>([]);
   const [allArticles, setAllArticles] = useState<any[]>([]);
-  
-  // انتخاب گروهی
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
-  // --- سیستم لاگین هوشمند ---
+  // --- احراز هویت ---
   useEffect(() => {
-    // چک کردن اینکه آیا قبلا لاگین کرده؟
     const isLoggedIn = localStorage.getItem('medium_admin_auth');
-    if (isLoggedIn === 'true') {
-      setIsAuthenticated(true);
-    }
+    if (isLoggedIn === 'true') setIsAuthenticated(true);
   }, []);
 
   const checkPassword = () => {
-    if (password === 'sam123') { // رمز عبور
+    if (password === 'sam123') {
       setIsAuthenticated(true);
-      localStorage.setItem('medium_admin_auth', 'true'); // ذخیره لاگین
+      localStorage.setItem('medium_admin_auth', 'true');
     } else {
       alert('رمز اشتباه است!');
     }
@@ -44,7 +39,6 @@ export default function AdminPage() {
   // --- دریافت داده‌ها ---
   useEffect(() => {
     if (!isAuthenticated) return;
-    
     if (activeTab === 'requests') {
       supabase.from('requests').select('*').eq('status', 'pending').order('created_at', { ascending: false }).then(({ data }) => setRequests(data || []));
     }
@@ -58,68 +52,99 @@ export default function AdminPage() {
     setAllArticles(data || []);
   };
 
-  // --- لاجیک انتخاب گروهی ---
-  const toggleSelect = (id: string) => {
-    if (selectedIds.includes(id)) {
-      setSelectedIds(selectedIds.filter(item => item !== id));
-    } else {
-      setSelectedIds([...selectedIds, id]);
-    }
-  };
-
-  const toggleSelectAll = () => {
-    if (selectedIds.length === allArticles.length) {
-      setSelectedIds([]); // همه رو بردار
-    } else {
-      setSelectedIds(allArticles.map(a => a.id)); // همه رو انتخاب کن
-    }
-  };
-
+  // --- لاجیک انتخاب و حذف ---
+  const toggleSelect = (id: string) => { if (selectedIds.includes(id)) setSelectedIds(selectedIds.filter(item => item !== id)); else setSelectedIds([...selectedIds, id]); };
+  const toggleSelectAll = () => { if (selectedIds.length === allArticles.length) setSelectedIds([]); else setSelectedIds(allArticles.map(a => a.id)); };
   const deleteSelected = async () => {
-    if (!confirm(`آیا مطمئنی میخوای ${selectedIds.length} مقاله رو حذف کنی؟`)) return;
-    
+    if (!confirm(`حذف ${selectedIds.length} مقاله؟`)) return;
     const { error } = await supabase.from('articles').delete().in('id', selectedIds);
-    if (!error) {
-      setAllArticles(allArticles.filter(a => !selectedIds.includes(a.id)));
-      setSelectedIds([]);
-      alert('🗑️ پاک شدند!');
-    }
+    if (!error) { setAllArticles(allArticles.filter(a => !selectedIds.includes(a.id))); setSelectedIds([]); alert('🗑️ پاک شدند!'); }
   };
 
-  // --- لاجیک فرم (مثل قبل) ---
-  const [jsonInput, setJsonInput] = useState('');
-  const [formData, setFormData] = useState({ title: '', slug: '', summary: '', content: '', author: 'تیم مدیوم فارسی', category: 'تکنولوژی', read_time: '۵ دقیقه', cover_url: '', source_url: '' });
+  // --- بخش هوشمند و اتوماتیک (جدید) ---
+  const [autoUrl, setAutoUrl] = useState('');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processLog, setProcessLog] = useState('');
 
-  const handleMagicImport = async () => {
+  const handleAutoProcess = async () => {
+    if (!autoUrl.includes('medium.com')) { alert('لینک معتبر Medium وارد کنید'); return; }
+    setIsProcessing(true);
+    setProcessLog('⏳ در حال دانلود محتوای مقاله...');
+
     try {
-      if (!jsonInput) return;
-      const data = JSON.parse(jsonInput);
-      if (Array.isArray(data)) {
-        if (!confirm(`وارد کردن ${data.length} مقاله؟`)) return;
-        for (const item of data) {
-           const finalSlug = item.slug || item.title.replace(/\s+/g, '-').toLowerCase();
-           let finalContent = item.content; if (item.source_url) finalContent += `\n\n---\nمنبع: [لینک اصلی](${item.source_url})`;
-           await supabase.from('articles').insert([{ ...item, slug: finalSlug, content: finalContent, published: true }]);
-        }
-        alert('✅ انجام شد!'); setJsonInput('');
-      } else {
-        setFormData({ ...formData, ...data }); alert('✨ نشست!'); setJsonInput('');
-      }
-    } catch (e) { alert('❌ فرمت JSON غلط است'); }
-  };
+      // ۱. دانلود متن مقاله (با استفاده از پروکسی برای دور زدن CORS)
+      // از Freedium استفاده میکنیم چون متن تمیزتری میده
+      const targetUrl = `https://freedium.cfd/${autoUrl}`;
+      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
+      
+      const response = await fetch(proxyUrl);
+      const data = await response.json();
+      
+      if (!data.contents) throw new Error('محتوا دانلود نشد');
+      
+      // تمیز کردن HTML ساده (گرفتن متن)
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(data.contents, 'text/html');
+      const articleText = doc.body.innerText.substring(0, 15000); // محدودیت تعداد کاراکتر برای AI
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const finalSlug = formData.slug || formData.title.replace(/\s+/g, '-').toLowerCase();
-    let finalContent = formData.content; if (formData.source_url) finalContent += `\n\n---\nمنبع: [لینک اصلی](${formData.source_url})`;
-    await supabase.from('articles').insert([{ ...formData, slug: finalSlug, content: finalContent, published: true }]);
-    alert('✅ منتشر شد!'); 
-    setFormData({ title: '', slug: '', summary: '', content: '', author: 'تیم مدیوم فارسی', category: 'تکنولوژی', read_time: '۵ دقیقه', cover_url: '', source_url: '' });
+      setProcessLog('🤖 در حال ترجمه و بازنویسی با هوش مصنوعی...');
+
+      // ۲. ارسال به Gemini
+      const genAI = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY!);
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+      const prompt = `
+        You are a professional Persian tech editor.
+        Rewrite the following article text into a JSON format for my blog using these rules:
+        1. Title: Catchy Persian title.
+        2. Slug: English slug.
+        3. Summary: 2-3 lines Persian summary.
+        4. Content: Full rewritten article in Persian Markdown (#, ##, -). Fluent and educational tone. Add "Source: [Link]" at end.
+        5. Category: One of [تکنولوژی, توسعه فردی, هوش مصنوعی, استارتاپ, برنامه‌نویسی].
+        6. Read_time: e.g. "۵ دقیقه".
+        7. Cover_url: Find a relevant Unsplash image URL (search query based on title).
+        8. Source_url: "${autoUrl}".
+        
+        Output ONLY raw JSON object (no markdown blocks).
+        
+        Article Text:
+        ${articleText}
+      `;
+
+      const aiResult = await model.generateContent(prompt);
+      const aiResponse = aiResult.response.text();
+      
+      // تمیز کردن خروجی JSON
+      const cleanJson = aiResponse.replace(/```json/g, '').replace(/```/g, '').trim();
+      const articleData = JSON.parse(cleanJson);
+
+      setProcessLog('💾 در حال ذخیره در دیتابیس...');
+
+      // ۳. ذخیره در Supabase
+      const finalSlug = articleData.slug || articleData.title.replace(/\s+/g, '-').toLowerCase();
+      const { error } = await supabase.from('articles').insert([{
+        ...articleData,
+        slug: finalSlug,
+        published: true
+      }]);
+
+      if (error) throw error;
+
+      alert('✅ مقاله با موفقیت ترجمه و منتشر شد!');
+      setAutoUrl('');
+      setProcessLog('');
+      
+    } catch (error: any) {
+      console.error(error);
+      alert('❌ خطا: ' + (error.message || 'مشکلی پیش آمد'));
+      setProcessLog('');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const markAsDone = async (id: string) => { await supabase.from('requests').update({ status: 'done' }).eq('id', id); setRequests(requests.filter(r => r.id !== id)); };
 
-  // --- صفحه لاگین ---
   if (!isAuthenticated) return (
     <div className="min-h-screen flex items-center justify-center p-4 font-vazir" dir="rtl">
         <div className="bg-[#111]/80 backdrop-blur-xl p-8 rounded-3xl border border-white/10 text-center space-y-4 max-w-sm w-full shadow-2xl">
@@ -133,75 +158,81 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen text-white font-vazir pb-20" dir="rtl">
-      
-      {/* نوبار اصلی سایت برای برگشت راحت */}
       <Navbar />
-
       <div className="max-w-6xl mx-auto px-6 mt-10">
         
-        {/* هدر و دکمه خروج */}
         <div className="flex justify-between items-center mb-8">
-            <h1 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-l from-blue-400 to-white">
-                داشبورد مدیریت
-            </h1>
-            <button onClick={handleLogout} className="flex items-center gap-2 text-red-400 hover:text-red-300 bg-red-500/10 px-4 py-2 rounded-xl transition-colors text-sm font-bold">
-                <LogOut size={16}/> خروج
-            </button>
+            <h1 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-l from-blue-400 to-white">داشبورد مدیریت</h1>
+            <button onClick={handleLogout} className="flex items-center gap-2 text-red-400 hover:text-red-300 bg-red-500/10 px-4 py-2 rounded-xl transition-colors text-sm font-bold"><LogOut size={16}/> خروج</button>
         </div>
 
-        {/* نوار ابزار تب‌ها */}
         <div className="flex flex-wrap gap-4 mb-8 bg-[#111]/80 backdrop-blur-md p-2 rounded-2xl border border-white/10 sticky top-24 z-40 shadow-xl">
-            <button onClick={() => setActiveTab('create')} className={`flex-1 px-4 py-3 rounded-xl font-bold transition-all text-sm flex items-center justify-center gap-2 ${activeTab === 'create' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>
-               <Layers size={18}/> افزودن محتوا
-            </button>
-            <button onClick={() => setActiveTab('manage')} className={`flex-1 px-4 py-3 rounded-xl font-bold transition-all text-sm flex items-center justify-center gap-2 ${activeTab === 'manage' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>
-               <FileText size={18}/> مدیریت مقالات
-            </button>
-            <button onClick={() => setActiveTab('requests')} className={`flex-1 px-4 py-3 rounded-xl font-bold transition-all text-sm flex items-center justify-center gap-2 ${activeTab === 'requests' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}>
-               <Users size={18}/> درخواست‌ها {requests.length > 0 && <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full">{requests.length}</span>}
-            </button>
+            <button onClick={() => setActiveTab('create')} className={`flex-1 px-4 py-3 rounded-xl font-bold transition-all text-sm flex items-center justify-center gap-2 ${activeTab === 'create' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}><Layers size={18}/> ربات نویسنده</button>
+            <button onClick={() => setActiveTab('manage')} className={`flex-1 px-4 py-3 rounded-xl font-bold transition-all text-sm flex items-center justify-center gap-2 ${activeTab === 'manage' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}><FileText size={18}/> مدیریت مقالات</button>
+            <button onClick={() => setActiveTab('requests')} className={`flex-1 px-4 py-3 rounded-xl font-bold transition-all text-sm flex items-center justify-center gap-2 ${activeTab === 'requests' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}><Users size={18}/> درخواست‌ها {requests.length > 0 && <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full">{requests.length}</span>}</button>
         </div>
 
-        {/* --- تب مدیریت مقالات (Bulk Actions) --- */}
+        {activeTab === 'create' && (
+          <div className="animate-in fade-in max-w-2xl mx-auto">
+            
+            {/* --- باکس تمام اتوماتیک --- */}
+            <div className="bg-gradient-to-br from-blue-900/20 to-purple-900/20 border border-blue-500/30 p-8 rounded-3xl mb-8 shadow-2xl relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/20 blur-[60px] -z-10"></div>
+              
+              <div className="flex items-center gap-3 mb-6 text-blue-300">
+                <div className="p-3 bg-blue-500/20 rounded-xl"><Wand2 size={28} /></div>
+                <div>
+                  <h3 className="font-bold text-xl text-white">تولید محتوای خودکار</h3>
+                  <p className="text-sm text-gray-400">لینک مقاله را بدهید، هوش مصنوعی بقیه کار را می‌کند.</p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="relative">
+                  <input 
+                    type="url" 
+                    placeholder="https://medium.com/..." 
+                    className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 pr-12 pl-4 text-white text-left dir-ltr placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-all"
+                    value={autoUrl}
+                    onChange={(e) => setAutoUrl(e.target.value)}
+                    disabled={isProcessing}
+                  />
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500"><LinkIcon size={20}/></div>
+                </div>
+
+                <button 
+                  onClick={handleAutoProcess} 
+                  disabled={isProcessing}
+                  className="w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-2xl font-bold text-lg shadow-lg shadow-blue-900/40 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 transition-all hover:scale-[1.02]"
+                >
+                  {isProcessing ? (
+                    <><Loader2 className="animate-spin"/> {processLog}</>
+                  ) : (
+                    <>شروع پردازش و انتشار <ArrowLeft/></>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <div className="text-center text-gray-500 text-sm">
+              <p>نکته: این پروسه ممکن است ۲۰ تا ۴۰ ثانیه زمان ببرد.</p>
+              <p>لطفاً صفحه را نبندید.</p>
+            </div>
+          </div>
+        )}
+
+        {/* --- تب مدیریت مقالات --- */}
         {activeTab === 'manage' && (
           <div className="space-y-4 animate-in fade-in">
-             
-             {/* نوار ابزار انتخاب */}
              <div className="flex justify-between items-center bg-blue-900/20 border border-blue-500/20 p-4 rounded-xl text-sm">
-                <div className="flex items-center gap-3">
-                    <button onClick={toggleSelectAll} className="flex items-center gap-2 text-blue-300 hover:text-white font-bold transition-colors">
-                        {selectedIds.length === allArticles.length && allArticles.length > 0 ? <CheckSquare size={20}/> : <Square size={20}/>}
-                        انتخاب همه
-                    </button>
-                    <span className="text-gray-400">|</span>
-                    <span className="text-gray-300">{selectedIds.length} مقاله انتخاب شده</span>
-                </div>
-                {selectedIds.length > 0 && (
-                    <button onClick={deleteSelected} className="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-bold transition-colors shadow-lg shadow-red-900/20">
-                        <Trash2 size={16}/> حذف {selectedIds.length} مورد
-                    </button>
-                )}
+                <div className="flex items-center gap-3"><button onClick={toggleSelectAll} className="flex items-center gap-2 text-blue-300 hover:text-white font-bold transition-colors">{selectedIds.length === allArticles.length && allArticles.length > 0 ? <CheckSquare size={20}/> : <Square size={20}/>} انتخاب همه</button><span className="text-gray-400">|</span><span className="text-gray-300">{selectedIds.length} مقاله انتخاب شده</span></div>
+                {selectedIds.length > 0 && (<button onClick={deleteSelected} className="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-bold transition-colors shadow-lg shadow-red-900/20"><Trash2 size={16}/> حذف {selectedIds.length} مورد</button>)}
              </div>
-
-             {/* لیست مقالات */}
              <div className="grid gap-3">
                 {allArticles.map(article => (
                 <div key={article.id} className={`bg-[#111]/80 backdrop-blur-md border p-4 rounded-xl flex items-center justify-between group transition-all ${selectedIds.includes(article.id) ? 'border-blue-500 bg-blue-900/10' : 'border-white/5 hover:border-white/20'}`}>
-                    <div className="flex items-center gap-4 overflow-hidden">
-                        <button onClick={() => toggleSelect(article.id)} className={`text-gray-500 hover:text-blue-400 transition-colors ${selectedIds.includes(article.id) ? 'text-blue-500' : ''}`}>
-                            {selectedIds.includes(article.id) ? <CheckSquare size={24}/> : <Square size={24}/>}
-                        </button>
-                        <div>
-                            <h3 className="font-bold text-gray-200 truncate max-w-md">{article.title}</h3>
-                            <div className="flex gap-3 text-xs text-gray-500 mt-1">
-                            <span>{new Date(article.created_at).toLocaleDateString('fa-IR')}</span>
-                            <span className="bg-white/5 px-2 rounded">{article.category}</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="flex gap-2">
-                        <Link href={`/blog/${article.slug || article.id}`} target="_blank" className="p-2 bg-white/5 rounded-lg hover:bg-white/10 text-blue-400" title="مشاهده"><Eye size={18}/></Link>
-                    </div>
+                    <div className="flex items-center gap-4 overflow-hidden"><button onClick={() => toggleSelect(article.id)} className={`text-gray-500 hover:text-blue-400 transition-colors ${selectedIds.includes(article.id) ? 'text-blue-500' : ''}`}>{selectedIds.includes(article.id) ? <CheckSquare size={24}/> : <Square size={24}/>}</button><div><h3 className="font-bold text-gray-200 truncate max-w-md">{article.title}</h3><div className="flex gap-3 text-xs text-gray-500 mt-1"><span>{new Date(article.created_at).toLocaleDateString('fa-IR')}</span><span className="bg-white/5 px-2 rounded">{article.category}</span></div></div></div>
+                    <div className="flex gap-2"><Link href={`/article?id=${article.slug || article.id}`} target="_blank" className="p-2 bg-white/5 rounded-lg hover:bg-white/10 text-blue-400" title="مشاهده"><Eye size={18}/></Link></div>
                 </div>
                 ))}
              </div>
@@ -214,28 +245,12 @@ export default function AdminPage() {
             {requests.length === 0 ? <p className="text-gray-500 text-center py-20 bg-white/5 rounded-3xl">صف خالی است.</p> : requests.map(req => (
               <div key={req.id} className="bg-[#111] border border-white/10 p-4 rounded-xl flex items-center justify-between">
                 <p className="text-blue-400 text-sm truncate w-96 dir-ltr text-left font-mono">{req.url}</p>
-                <div className="flex gap-2"><button onClick={() => navigator.clipboard.writeText(req.url)} className="p-2 bg-white/5 rounded-lg hover:bg-white/10"><Copy size={18}/></button><button onClick={() => markAsDone(req.id)} className="p-2 bg-green-500/20 text-green-500 rounded-lg"><Check size={18}/></button></div>
+                <div className="flex gap-2"><button onClick={() => {navigator.clipboard.writeText(req.url); setAutoUrl(req.url); setActiveTab('create');}} className="px-3 py-1.5 bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white rounded-lg text-xs font-bold transition-colors">ترجمه خودکار</button><button onClick={() => markAsDone(req.id)} className="p-2 bg-green-500/20 text-green-500 rounded-lg"><Check size={18}/></button></div>
               </div>
             ))}
           </div>
         )}
 
-        {/* --- تب افزودن مقاله --- */}
-        {activeTab === 'create' && (
-          <div className="animate-in fade-in">
-            <div className="bg-gradient-to-r from-blue-900/10 to-purple-900/10 border border-blue-500/20 p-6 rounded-2xl mb-8">
-              <div className="flex items-center gap-2 mb-4 text-blue-300"><Wand2 size={20} /><h3 className="font-bold">ایمپورت انبوه (JSON)</h3></div>
-              <div className="flex gap-2"><textarea placeholder="کد JSON را اینجا بگذارید..." className="flex-grow bg-black/50 border border-white/10 rounded-xl p-3 text-sm text-gray-300 font-mono h-20" value={jsonInput} onChange={(e) => setJsonInput(e.target.value)} /><button onClick={handleMagicImport} className="bg-blue-600 hover:bg-blue-500 text-white px-6 rounded-xl font-bold text-sm h-20">اجرا ✨</button></div>
-            </div>
-            <form onSubmit={handleSubmit} className="space-y-6 bg-[#111] p-8 rounded-3xl border border-white/5">
-                <input type="text" placeholder="عنوان" className="input-field" value={formData.title} onChange={e => setFormData({...formData, title: e.target.value})} required/>
-                <textarea placeholder="خلاصه" className="input-field h-24" value={formData.summary} onChange={e => setFormData({...formData, summary: e.target.value})} required></textarea>
-                <textarea placeholder="محتوا" className="input-field h-96 leading-8" value={formData.content} onChange={e => setFormData({...formData, content: e.target.value})} required></textarea>
-                <div className="grid grid-cols-2 gap-4"><input type="text" placeholder="لینک عکس" className="input-field" value={formData.cover_url} onChange={e => setFormData({...formData, cover_url: e.target.value})} /><input type="text" placeholder="منبع" className="input-field" value={formData.source_url} onChange={e => setFormData({...formData, source_url: e.target.value})} /></div>
-                <button type="submit" className="w-full bg-white/10 hover:bg-white/20 py-4 rounded-xl text-white font-bold border border-white/5">انتشار دستی</button>
-            </form>
-          </div>
-        )}
       </div>
       <style jsx>{` .input-field { width: 100%; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 16px; color: white; outline: none; } .input-field:focus { border-color: #3b82f6; background: rgba(0,0,0,0.8); } `}</style>
     </div>
