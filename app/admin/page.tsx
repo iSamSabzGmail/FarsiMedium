@@ -61,7 +61,7 @@ export default function AdminPage() {
     if (!error) { setAllArticles(allArticles.filter(a => !selectedIds.includes(a.id))); setSelectedIds([]); alert('🗑️ پاک شدند!'); }
   };
 
-  // --- ربات نویسنده (نسخه اصلاح شده با پروکسی قوی) ---
+  // --- ربات نویسنده (نسخه اصلاح شده: Gemini Pro) ---
   const [autoUrl, setAutoUrl] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [processLog, setProcessLog] = useState('');
@@ -76,30 +76,29 @@ export default function AdminPage() {
       // ۱. ساخت لینک Jina
       const jinaUrl = `https://r.jina.ai/${autoUrl}`;
       
-      // ۲. استفاده از پروکسی قوی‌تر (CorsProxy)
-      // این سرویس مستقیم متن رو برمی‌گردونه و باگ Oops نداره
+      // ۲. استفاده از پروکسی قوی
       const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(jinaUrl)}`;
       
       const response = await fetch(proxyUrl);
       
       if (!response.ok) throw new Error('خطا در دانلود مقاله. وضعیت: ' + response.status);
       
-      // دریافت متن خام (دیگه جیسون نیست)
+      // دریافت متن خام
       const articleText = await response.text();
 
-      // چک کردن اینکه آیا متن واقعا دانلود شده؟
       if (articleText.length < 200 || articleText.includes('Access Denied')) {
         throw new Error('متن مقاله دانلود نشد یا دسترسی مسدود است.');
       }
 
-      setProcessLog('🤖 ارسال به Gemini برای ترجمه...');
+      setProcessLog('🤖 ارسال به Gemini (مدل Pro) برای ترجمه...');
 
       // ۳. ارسال به Gemini
       const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
       if(!apiKey) throw new Error('کلید Gemini پیدا نشد. فایل .env.local را چک کنید');
 
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      // 👇👇👇 تغییر مهم: استفاده از مدل پایدار gemini-pro 👇👇👇
+      const model = genAI.getGenerativeModel({ model: "gemini-pro" });
 
       const prompt = `
         You are a professional Persian tech editor.
@@ -122,7 +121,7 @@ export default function AdminPage() {
         - source_url: "${autoUrl}".
         
         Article Content from Jina:
-        ${articleText.substring(0, 25000)}
+        ${articleText.substring(0, 20000)}
       `;
 
       const aiResult = await model.generateContent(prompt);
