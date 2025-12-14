@@ -1,7 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ArrowLeft, Lock, Wand2, Users, Copy, Check, Layers, Trash2, FileText, Eye, LogOut, Square, CheckSquare, Loader2, Link as LinkIcon } from 'lucide-react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
@@ -15,7 +14,6 @@ export default function AdminPage() {
   const [allArticles, setAllArticles] = useState<any[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
-  // --- احراز هویت ---
   useEffect(() => {
     const isLoggedIn = localStorage.getItem('medium_admin_auth');
     if (isLoggedIn === 'true') setIsAuthenticated(true);
@@ -36,7 +34,6 @@ export default function AdminPage() {
     setPassword('');
   };
 
-  // --- دریافت داده‌ها ---
   useEffect(() => {
     if (!isAuthenticated) return;
     if (activeTab === 'requests') {
@@ -52,7 +49,6 @@ export default function AdminPage() {
     setAllArticles(data || []);
   };
 
-  // --- لاجیک انتخاب و حذف ---
   const toggleSelect = (id: string) => { if (selectedIds.includes(id)) setSelectedIds(selectedIds.filter(item => item !== id)); else setSelectedIds([...selectedIds, id]); };
   const toggleSelectAll = () => { if (selectedIds.length === allArticles.length) setSelectedIds([]); else setSelectedIds(allArticles.map(a => a.id)); };
   const deleteSelected = async () => {
@@ -61,87 +57,34 @@ export default function AdminPage() {
     if (!error) { setAllArticles(allArticles.filter(a => !selectedIds.includes(a.id))); setSelectedIds([]); alert('🗑️ پاک شدند!'); }
   };
 
-  // --- بخش هوشمند و اتوماتیک (اصلاح شده برای همه لینک‌ها) ---
+  // --- بخش هوشمند جدید (متصل به سرور) ---
   const [autoUrl, setAutoUrl] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [processLog, setProcessLog] = useState('');
 
   const handleAutoProcess = async () => {
-    // ۱. حذف محدودیت medium.com تا دامین‌های اختصاصی هم کار کنند
-    if (autoUrl.length < 10) { alert('لطفاً یک لینک معتبر وارد کنید'); return; }
+    if (!autoUrl.length) { alert('لینک را وارد کنید'); return; }
     
     setIsProcessing(true);
-    setProcessLog('⏳ در حال آماده‌سازی لینک...');
+    setProcessLog('🚀 اتصال به سرور هوشمند...');
 
     try {
-      // ۲. هوشمندسازی لینک Freedium
-      let finalTargetUrl = autoUrl.trim();
+      // ارسال درخواست به API Route خودمان
+      const response = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: autoUrl })
+      });
 
-      // اگر کاربر خودش لینک freedium داده، دستکاری نکنیم. 
-      // اگر لینک معمولی داده، freedium رو به اولش اضافه کنیم.
-      if (!finalTargetUrl.includes('freedium.cfd')) {
-        finalTargetUrl = `https://freedium.cfd/${finalTargetUrl}`;
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'خطا در پردازش');
       }
 
-      setProcessLog('🚀 در حال دانلود محتوا از سرور...');
+      setProcessLog('✅ دریافت شد! در حال ذخیره...');
+      const articleData = await response.json();
 
-      // ۳. استفاده از پروکسی برای دانلود متن
-      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(finalTargetUrl)}`;
-      
-      const response = await fetch(proxyUrl);
-      const data = await response.json();
-      
-      if (!data.contents) throw new Error('محتوا دانلود نشد. شاید لینک خراب است.');
-      
-      // ۴. تمیز کردن HTML
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(data.contents, 'text/html');
-      
-      // حذف تبلیغات و منوها برای اینکه متن خالص‌تر به هوش مصنوعی برسه
-      doc.querySelectorAll('nav, header, footer, script, style').forEach(el => el.remove());
-      
-      const articleText = doc.body.innerText.substring(0, 18000); // افزایش حجم ورودی
-
-      setProcessLog('🤖 در حال ترجمه و بازنویسی حرفه‌ای...');
-
-      // ۵. ارسال به Gemini
-      const genAI = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY!);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
-      const prompt = `
-        You are a professional Persian tech editor.
-        Task: Rewrite this article for a Persian blog.
-        
-        Rules:
-        1. Language: Fluent, modern Persian (Farsi). NO Google Translate style.
-        2. Tone: Educational and engaging.
-        3. Structure: Use Markdown (# Title, ## Subtitle, - List).
-        4. Output: ONLY a valid JSON object.
-
-        JSON Fields:
-        - title: Catchy Persian title.
-        - slug: English slug (kebab-case).
-        - summary: 2-3 lines Persian summary.
-        - content: The rewritten article body in Markdown. Add "Source: [Link]" at the end.
-        - category: One of [تکنولوژی, توسعه فردی, هوش مصنوعی, استارتاپ, برنامه‌نویسی].
-        - read_time: e.g. "۵ دقیقه".
-        - cover_url: Find a relevant Unsplash image URL based on the topic.
-        - source_url: "${autoUrl}".
-        
-        Article Content:
-        ${articleText}
-      `;
-
-      const aiResult = await model.generateContent(prompt);
-      const aiResponse = aiResult.response.text();
-      
-      // تمیز کردن JSON
-      const cleanJson = aiResponse.replace(/```json/g, '').replace(/```/g, '').trim();
-      const articleData = JSON.parse(cleanJson);
-
-      setProcessLog('💾 در حال ذخیره در دیتابیس...');
-
-      // ۶. ذخیره
+      // ذخیره در Supabase
       const finalSlug = articleData.slug || articleData.title.replace(/\s+/g, '-').toLowerCase();
       const { error } = await supabase.from('articles').insert([{
         ...articleData,
@@ -151,13 +94,13 @@ export default function AdminPage() {
 
       if (error) throw error;
 
-      alert('✅ مقاله با موفقیت ترجمه و منتشر شد!');
+      alert('✅ مقاله با موفقیت منتشر شد!');
       setAutoUrl('');
       setProcessLog('');
       
     } catch (error: any) {
       console.error(error);
-      alert('❌ خطا: ' + (error.message || 'مشکلی پیش آمد'));
+      alert('❌ خطا: ' + error.message);
       setProcessLog('');
     } finally {
       setIsProcessing(false);
@@ -202,7 +145,7 @@ export default function AdminPage() {
                 <div className="p-3 bg-blue-500/20 rounded-xl"><Wand2 size={28} /></div>
                 <div>
                   <h3 className="font-bold text-xl text-white">تولید محتوای خودکار</h3>
-                  <p className="text-sm text-gray-400">لینک مقاله (Medium یا Freedium) را بدهید.</p>
+                  <p className="text-sm text-gray-400">لینک مقاله (Medium) را بدهید تا سرور آن را پردازش کند.</p>
                 </div>
               </div>
 
@@ -210,7 +153,7 @@ export default function AdminPage() {
                 <div className="relative">
                   <input 
                     type="url" 
-                    placeholder="https://medium.com/... یا https://freedium.cfd/..." 
+                    placeholder="https://medium.com/..." 
                     className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 pr-12 pl-4 text-white text-left dir-ltr placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-all"
                     value={autoUrl}
                     onChange={(e) => setAutoUrl(e.target.value)}
@@ -227,7 +170,7 @@ export default function AdminPage() {
                   {isProcessing ? (
                     <><Loader2 className="animate-spin"/> {processLog}</>
                   ) : (
-                    <>شروع پردازش و انتشار <ArrowLeft/></>
+                    <>شروع پردازش سرور <ArrowLeft/></>
                   )}
                 </button>
               </div>
@@ -235,7 +178,7 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* بقیه تب‌ها مثل قبل ... */}
+        {/* بقیه تب‌ها (مدیریت و درخواست) مثل قبل ... */}
         {activeTab === 'manage' && (
           <div className="space-y-4 animate-in fade-in">
              <div className="flex justify-between items-center bg-blue-900/20 border border-blue-500/20 p-4 rounded-xl text-sm">
@@ -265,7 +208,6 @@ export default function AdminPage() {
         )}
 
       </div>
-      <style jsx>{` .input-field { width: 100%; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 16px; color: white; outline: none; } .input-field:focus { border-color: #3b82f6; background: rgba(0,0,0,0.8); } `}</style>
     </div>
   );
 }
