@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Clock, Sparkles, Filter, Search, X } from 'lucide-react';
+import { Clock, Sparkles, Filter, Search, X, AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import Navbar from '@/components/Navbar';
@@ -24,12 +24,11 @@ export default function Home() {
   const [articles, setArticles] = useState<Article[]>([]);
   const [filteredArticles, setFilteredArticles] = useState<Article[]>([]);
   
-  // استیت‌های فیلتر و جستجو
   const [filter, setFilter] = useState('همه');
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
 
-  // ۱. دریافت کل مقالات از دیتابیس
+  // ۱. دریافت مقالات
   useEffect(() => {
     async function fetchArticles() {
       const { data } = await supabase
@@ -47,16 +46,14 @@ export default function Home() {
     fetchArticles();
   }, []);
 
-  // ۲. فیلتر کردن هوشمند (ترکیب دسته‌بندی + جستجو)
+  // ۲. فیلتر ترکیبی
   useEffect(() => {
     let result = articles;
 
-    // الف) اول فیلتر دسته بندی
     if (filter !== 'همه') {
       result = result.filter(a => a.category === filter);
     }
 
-    // ب) دوم فیلتر متن جستجو
     if (searchTerm.trim() !== '') {
       const term = searchTerm.toLowerCase();
       result = result.filter(a => 
@@ -99,7 +96,7 @@ export default function Home() {
         </motion.div>
       </header>
 
-      {/* --- بخش جدید: نوار جستجو --- */}
+      {/* Search Bar */}
       <div className="max-w-xl mx-auto px-6 mb-10 relative z-20">
         <div className="relative group">
           <input 
@@ -165,6 +162,7 @@ export default function Home() {
                     key={post.id}
                     className="group bg-white/5 backdrop-blur-md border border-white/10 rounded-[2rem] overflow-hidden hover:bg-white/10 hover:border-white/20 hover:shadow-2xl hover:shadow-blue-900/10 transition-all duration-500 flex flex-col h-full"
                   >
+                    {/* بخش تصویر */}
                     <div className="aspect-[1.6] overflow-hidden relative">
                       {post.cover_url ? (
                         <img 
@@ -181,8 +179,10 @@ export default function Home() {
                       </div>
                     </div>
                     
+                    {/* بخش متن */}
                     <div className="p-7 flex flex-col flex-grow">
-                      <Link href={`/blog/${post.slug || post.id}`} className="block mb-3">
+                      {/* 👇👇👇 لینک اصلاح شده (آنی) 👇👇👇 */}
+                      <Link href={`/article?id=${post.slug || post.id}`} className="block mb-3">
                         <h3 className="text-xl font-bold text-gray-100 leading-snug group-hover:text-blue-400 transition-colors line-clamp-2">
                           {post.title}
                         </h3>
