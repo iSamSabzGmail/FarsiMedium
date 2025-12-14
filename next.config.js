@@ -1,6 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // این بخش برای جلوگیری از ارورهای احتمالی تایپ‌اسکریپت در بیلد است
+  output: 'export',  // این خط حیاتی است برای گیت‌هاب پیج
+  images: {
+    unoptimized: true, // عکس‌ها در گیت‌هاب پیج باید اینطور باشند
+  },
   typescript: {
     ignoreBuildErrors: true,
   },
