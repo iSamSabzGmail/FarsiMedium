@@ -1,4 +1,4 @@
-'use client'; // این فایل کلاینت است
+'use client'; // این خط خیلی مهم است
 import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { Clock, Calendar, BookOpen, Share2, Home, Copy, Check, Twitter, Send, AlertTriangle, ListChecks, ArrowLeft } from 'lucide-react';
@@ -6,21 +6,27 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { motion, useScroll, useSpring, AnimatePresence } from 'framer-motion';
 
-// اینترفیس
+// تعریف ساختار داده
 interface Article {
   id: string; title: string; summary: string; content: string; cover_url: string | null; category: string | null; author: string | null; created_at: string; read_time: string | null; slug: string | null; source_url: string | null;
 }
 
-// تابع دریافت دیتا
+// تابع دریافت دیتا در سمت کلاینت
 async function getArticleData(slug: string) {
   let { data: article } = await supabase.from('articles').select('*').eq('slug', slug).single();
-  if (!article) { const { data: dataById } = await supabase.from('articles').select('*').eq('id', slug).single(); article = dataById; }
+  if (!article) { 
+    const { data: dataById } = await supabase.from('articles').select('*').eq('id', slug).single(); 
+    article = dataById; 
+  }
+  
   let related: Article[] = [];
-  if (article) { const { data } = await supabase.from('articles').select('*').eq('category', article.category).neq('id', article.id).limit(3); if (data) related = data as Article[]; }
+  if (article) { 
+    const { data } = await supabase.from('articles').select('*').eq('category', article.category).neq('id', article.id).limit(3); 
+    if (data) related = data as Article[]; 
+  }
   return { article: article as Article, related };
 }
 
-// کامپوننت اصلی نمایش
 export default function ArticleContent({ slug }: { slug: string }) {
   const [data, setData] = useState<{article: Article, related: Article[]} | null>(null);
   const [loading, setLoading] = useState(true);
@@ -31,16 +37,25 @@ export default function ArticleContent({ slug }: { slug: string }) {
 
   useEffect(() => {
     getArticleData(slug).then(res => {
-      if (res.article) { setData(res); document.title = `${res.article.title} | مدیوم فارسی`; }
+      if (res.article) { 
+        setData(res); 
+        document.title = `${res.article.title} | مدیوم فارسی`; 
+      }
       setLoading(false);
     });
   }, [slug]);
 
   const copyLink = () => { navigator.clipboard.writeText(window.location.href); setCopied(true); setTimeout(() => setCopied(false), 2000); };
-  const shareTo = (platform: string) => { const url = encodeURIComponent(window.location.href); if (platform === 'telegram') window.open(`https://t.me/share/url?url=${url}`, '_blank'); if (platform === 'twitter') window.open(`https://twitter.com/intent/tweet?url=${url}`, '_blank'); setShowShareMenu(false); };
+  const shareTo = (platform: string) => { 
+    const url = encodeURIComponent(window.location.href); 
+    if (platform === 'telegram') window.open(`https://t.me/share/url?url=${url}`, '_blank'); 
+    if (platform === 'twitter') window.open(`https://twitter.com/intent/tweet?url=${url}`, '_blank'); 
+    setShowShareMenu(false); 
+  };
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-white"><div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div></div>;
   if (!data?.article) return notFound();
+  
   const { article, related } = data;
 
   return (
@@ -71,31 +86,35 @@ export default function ArticleContent({ slug }: { slug: string }) {
       </div>
 
       <article className="max-w-3xl mx-auto px-6 mt-10">
-        <div className="bg-black/40 backdrop-blur-2xl border border-white/5 rounded-[2.5rem] p-6 md:p-10 shadow-2xl">
-          <header className="mb-8 space-y-6">
+        <div className="bg-[#0a0a0a] border border-white/10 rounded-[2rem] p-6 md:p-10 shadow-2xl relative overflow-hidden">
+          <header className="mb-8 space-y-6 relative z-10">
             <Link href="/" className="inline-block bg-blue-500/10 text-blue-400 px-3 py-1 rounded-lg text-sm font-bold border border-blue-500/20">{article.category || 'عمومی'}</Link>
             <h1 className="text-3xl md:text-5xl font-black text-white leading-tight">{article.title}</h1>
-            <div className="flex flex-wrap items-center gap-6 text-gray-400 text-sm border-b border-white/10 pb-8">
-              <span className="font-bold text-white flex items-center gap-2"><div className="w-6 h-6 rounded-full bg-gray-800 flex items-center justify-center text-xs">{article.author?.[0]}</div>{article.author}</span>
+            <div className="flex flex-wrap items-center gap-6 text-gray-400 text-sm border-b border-white/5 pb-8">
+              <span className="font-bold text-white flex items-center gap-2"><div className="w-6 h-6 rounded-full bg-gray-800 flex items-center justify-center text-xs text-gray-300">{article.author?.[0]}</div>{article.author}</span>
               <span className="flex items-center gap-1.5"><Clock size={16} /> {article.read_time}</span>
               <span className="flex items-center gap-1.5"><Calendar size={16} /> {new Date(article.created_at).toLocaleDateString('fa-IR')}</span>
             </div>
           </header>
-          {article.cover_url && <div className="mb-10 rounded-3xl overflow-hidden shadow-2xl border border-white/5"><img src={article.cover_url} alt={article.title} className="w-full h-auto object-cover" /></div>}
-          <div className="mb-10 bg-blue-900/10 border border-blue-500/20 rounded-2xl p-6">
+
+          {article.cover_url && <div className="mb-10 rounded-3xl overflow-hidden shadow-lg border border-white/5"><img src={article.cover_url} alt={article.title} className="w-full h-auto object-cover" /></div>}
+
+          <div className="mb-10 bg-blue-900/10 border border-blue-500/20 rounded-2xl p-6 relative z-10">
             <div className="flex items-center gap-2 text-blue-300 font-bold mb-3"><ListChecks size={20} /><h3>خلاصه ۳۰ ثانیه‌ای</h3></div>
             <p className="text-gray-300 leading-relaxed text-sm">{article.summary}</p>
           </div>
-          <div className="prose prose-lg prose-invert max-w-none prose-p:leading-8 prose-p:text-gray-200 prose-headings:text-white prose-a:text-blue-400">
+
+          <div className="prose prose-lg prose-invert max-w-none prose-p:leading-8 prose-p:text-gray-300 prose-headings:text-white prose-a:text-blue-400 relative z-10">
             {article.content ? article.content.split('\n').map((paragraph: string, index: number) => {
                if (paragraph.startsWith('# ')) return <h1 key={index} className="mt-12 mb-6">{paragraph.replace('# ', '')}</h1>;
-               if (paragraph.startsWith('## ')) return <h2 key={index} className="mt-10 mb-4 text-blue-200">{paragraph.replace('## ', '')}</h2>;
+               if (paragraph.startsWith('## ')) return <h2 key={index} className="mt-10 mb-4 text-blue-100">{paragraph.replace('## ', '')}</h2>;
                if (paragraph.startsWith('- ')) return <li key={index} className="list-disc mr-4 mb-2 text-gray-300">{paragraph.replace('- ', '')}</li>;
                if (paragraph.includes('منبع:')) return null;
                return <p key={index} className="mb-6">{paragraph}</p>;
             }) : <p>محتوایی نیست.</p>}
           </div>
-          <div className="mt-16 pt-8 border-t border-white/10">
+
+          <div className="mt-16 pt-8 border-t border-white/10 relative z-10">
             <div className="bg-white/5 rounded-xl p-4 text-xs text-gray-500 flex gap-3 items-start leading-5">
               <AlertTriangle size={24} className="text-yellow-600 shrink-0" />
               <div>
@@ -105,12 +124,13 @@ export default function ArticleContent({ slug }: { slug: string }) {
             </div>
           </div>
         </div>
+
         {related.length > 0 && (
           <div className="mt-20">
             <h3 className="text-2xl font-black text-white mb-8 flex items-center gap-3"><span className="w-1 h-8 bg-blue-500 rounded-full"></span>پیشنهاد مطالعه</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {related.map((post) => (
-                <Link key={post.id} href={`/blog/${post.slug || post.id}`} className="group bg-black/40 border border-white/10 rounded-2xl overflow-hidden hover:border-blue-500/30 transition-all">
+                <Link key={post.id} href={`/blog/${post.slug || post.id}`} className="group bg-[#0a0a0a] border border-white/10 rounded-2xl overflow-hidden hover:border-blue-500/30 transition-all">
                   <div className="aspect-video relative">
                     {post.cover_url && <img src={post.cover_url} alt={post.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"/>}
                     <div className="absolute top-2 right-2 bg-black/60 px-2 py-1 rounded-lg text-[10px] text-white backdrop-blur">{post.category}</div>

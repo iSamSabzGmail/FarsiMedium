@@ -1,25 +1,27 @@
 import { supabase } from '@/lib/supabase';
-import ArticleContent from './ArticleContent'; // ایمپورت کامپوننت کلاینت
+import ArticleContent from './ArticleContent';
 
-// این فایل سرور کامپوننت است و "use client" ندارد!
+// این فایل سرور است و نباید "use client" داشته باشد
 
-// ۱. تولید صفحات استاتیک (اجرا در سرور موقع بیلد)
+// ۱. تولید صفحات استاتیک (حیاتی برای output: export)
 export async function generateStaticParams() {
   try {
     const { data: articles } = await supabase.from('articles').select('slug, id');
+    
+    // اگر مقاله‌ای نبود، آرایه خالی برمی‌گرداند (بیلد فیل نمی‌شود)
     if (!articles) return [];
     
     return articles.map((post) => ({
       slug: post.slug || post.id,
     }));
   } catch (error) {
-    console.warn('⚠️ بیلد: اتصال دیتابیس برقرار نشد (طبیعی در CI/CD)');
+    console.warn('⚠️ هشدار بیلد: دیتابیس در دسترس نیست (طبیعی در محیط بیلد)');
     return [];
   }
 }
 
 // ۲. رندر صفحه
 export default function Page({ params }: { params: { slug: string } }) {
-  // فقط کامپوننت کلاینت رو لود میکنیم و اسلاگ رو بهش پاس میدیم
+  // ما فقط Slug را به کامپوننت کلاینت پاس می‌دهیم
   return <ArticleContent slug={params.slug} />;
 }
