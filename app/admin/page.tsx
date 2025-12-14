@@ -61,66 +61,87 @@ export default function AdminPage() {
     if (!error) { setAllArticles(allArticles.filter(a => !selectedIds.includes(a.id))); setSelectedIds([]); alert('🗑️ پاک شدند!'); }
   };
 
-  // --- بخش هوشمند و اتوماتیک (جدید) ---
+  // --- بخش هوشمند و اتوماتیک (اصلاح شده برای همه لینک‌ها) ---
   const [autoUrl, setAutoUrl] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [processLog, setProcessLog] = useState('');
 
   const handleAutoProcess = async () => {
-    if (!autoUrl.includes('medium.com')) { alert('لینک معتبر Medium وارد کنید'); return; }
+    // ۱. حذف محدودیت medium.com تا دامین‌های اختصاصی هم کار کنند
+    if (autoUrl.length < 10) { alert('لطفاً یک لینک معتبر وارد کنید'); return; }
+    
     setIsProcessing(true);
-    setProcessLog('⏳ در حال دانلود محتوای مقاله...');
+    setProcessLog('⏳ در حال آماده‌سازی لینک...');
 
     try {
-      // ۱. دانلود متن مقاله (با استفاده از پروکسی برای دور زدن CORS)
-      // از Freedium استفاده میکنیم چون متن تمیزتری میده
-      const targetUrl = `https://freedium.cfd/${autoUrl}`;
-      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
+      // ۲. هوشمندسازی لینک Freedium
+      let finalTargetUrl = autoUrl.trim();
+
+      // اگر کاربر خودش لینک freedium داده، دستکاری نکنیم. 
+      // اگر لینک معمولی داده، freedium رو به اولش اضافه کنیم.
+      if (!finalTargetUrl.includes('freedium.cfd')) {
+        finalTargetUrl = `https://freedium.cfd/${finalTargetUrl}`;
+      }
+
+      setProcessLog('🚀 در حال دانلود محتوا از سرور...');
+
+      // ۳. استفاده از پروکسی برای دانلود متن
+      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(finalTargetUrl)}`;
       
       const response = await fetch(proxyUrl);
       const data = await response.json();
       
-      if (!data.contents) throw new Error('محتوا دانلود نشد');
+      if (!data.contents) throw new Error('محتوا دانلود نشد. شاید لینک خراب است.');
       
-      // تمیز کردن HTML ساده (گرفتن متن)
+      // ۴. تمیز کردن HTML
       const parser = new DOMParser();
       const doc = parser.parseFromString(data.contents, 'text/html');
-      const articleText = doc.body.innerText.substring(0, 15000); // محدودیت تعداد کاراکتر برای AI
+      
+      // حذف تبلیغات و منوها برای اینکه متن خالص‌تر به هوش مصنوعی برسه
+      doc.querySelectorAll('nav, header, footer, script, style').forEach(el => el.remove());
+      
+      const articleText = doc.body.innerText.substring(0, 18000); // افزایش حجم ورودی
 
-      setProcessLog('🤖 در حال ترجمه و بازنویسی با هوش مصنوعی...');
+      setProcessLog('🤖 در حال ترجمه و بازنویسی حرفه‌ای...');
 
-      // ۲. ارسال به Gemini
+      // ۵. ارسال به Gemini
       const genAI = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY!);
       const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
       const prompt = `
         You are a professional Persian tech editor.
-        Rewrite the following article text into a JSON format for my blog using these rules:
-        1. Title: Catchy Persian title.
-        2. Slug: English slug.
-        3. Summary: 2-3 lines Persian summary.
-        4. Content: Full rewritten article in Persian Markdown (#, ##, -). Fluent and educational tone. Add "Source: [Link]" at end.
-        5. Category: One of [تکنولوژی, توسعه فردی, هوش مصنوعی, استارتاپ, برنامه‌نویسی].
-        6. Read_time: e.g. "۵ دقیقه".
-        7. Cover_url: Find a relevant Unsplash image URL (search query based on title).
-        8. Source_url: "${autoUrl}".
+        Task: Rewrite this article for a Persian blog.
         
-        Output ONLY raw JSON object (no markdown blocks).
+        Rules:
+        1. Language: Fluent, modern Persian (Farsi). NO Google Translate style.
+        2. Tone: Educational and engaging.
+        3. Structure: Use Markdown (# Title, ## Subtitle, - List).
+        4. Output: ONLY a valid JSON object.
+
+        JSON Fields:
+        - title: Catchy Persian title.
+        - slug: English slug (kebab-case).
+        - summary: 2-3 lines Persian summary.
+        - content: The rewritten article body in Markdown. Add "Source: [Link]" at the end.
+        - category: One of [تکنولوژی, توسعه فردی, هوش مصنوعی, استارتاپ, برنامه‌نویسی].
+        - read_time: e.g. "۵ دقیقه".
+        - cover_url: Find a relevant Unsplash image URL based on the topic.
+        - source_url: "${autoUrl}".
         
-        Article Text:
+        Article Content:
         ${articleText}
       `;
 
       const aiResult = await model.generateContent(prompt);
       const aiResponse = aiResult.response.text();
       
-      // تمیز کردن خروجی JSON
+      // تمیز کردن JSON
       const cleanJson = aiResponse.replace(/```json/g, '').replace(/```/g, '').trim();
       const articleData = JSON.parse(cleanJson);
 
       setProcessLog('💾 در حال ذخیره در دیتابیس...');
 
-      // ۳. ذخیره در Supabase
+      // ۶. ذخیره
       const finalSlug = articleData.slug || articleData.title.replace(/\s+/g, '-').toLowerCase();
       const { error } = await supabase.from('articles').insert([{
         ...articleData,
@@ -174,8 +195,6 @@ export default function AdminPage() {
 
         {activeTab === 'create' && (
           <div className="animate-in fade-in max-w-2xl mx-auto">
-            
-            {/* --- باکس تمام اتوماتیک --- */}
             <div className="bg-gradient-to-br from-blue-900/20 to-purple-900/20 border border-blue-500/30 p-8 rounded-3xl mb-8 shadow-2xl relative overflow-hidden">
               <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/20 blur-[60px] -z-10"></div>
               
@@ -183,7 +202,7 @@ export default function AdminPage() {
                 <div className="p-3 bg-blue-500/20 rounded-xl"><Wand2 size={28} /></div>
                 <div>
                   <h3 className="font-bold text-xl text-white">تولید محتوای خودکار</h3>
-                  <p className="text-sm text-gray-400">لینک مقاله را بدهید، هوش مصنوعی بقیه کار را می‌کند.</p>
+                  <p className="text-sm text-gray-400">لینک مقاله (Medium یا Freedium) را بدهید.</p>
                 </div>
               </div>
 
@@ -191,7 +210,7 @@ export default function AdminPage() {
                 <div className="relative">
                   <input 
                     type="url" 
-                    placeholder="https://medium.com/..." 
+                    placeholder="https://medium.com/... یا https://freedium.cfd/..." 
                     className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 pr-12 pl-4 text-white text-left dir-ltr placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-all"
                     value={autoUrl}
                     onChange={(e) => setAutoUrl(e.target.value)}
@@ -213,15 +232,10 @@ export default function AdminPage() {
                 </button>
               </div>
             </div>
-
-            <div className="text-center text-gray-500 text-sm">
-              <p>نکته: این پروسه ممکن است ۲۰ تا ۴۰ ثانیه زمان ببرد.</p>
-              <p>لطفاً صفحه را نبندید.</p>
-            </div>
           </div>
         )}
 
-        {/* --- تب مدیریت مقالات --- */}
+        {/* بقیه تب‌ها مثل قبل ... */}
         {activeTab === 'manage' && (
           <div className="space-y-4 animate-in fade-in">
              <div className="flex justify-between items-center bg-blue-900/20 border border-blue-500/20 p-4 rounded-xl text-sm">
@@ -239,7 +253,6 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* --- تب درخواست‌ها --- */}
         {activeTab === 'requests' && (
           <div className="space-y-4 animate-in fade-in">
             {requests.length === 0 ? <p className="text-gray-500 text-center py-20 bg-white/5 rounded-3xl">صف خالی است.</p> : requests.map(req => (
