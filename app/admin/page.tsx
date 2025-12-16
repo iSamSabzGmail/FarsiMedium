@@ -24,7 +24,6 @@ export default function AdminPage() {
   }, []);
 
   const checkPassword = () => {
-    // نکته امنیتی: در پروژه واقعی بهتر است از Supabase Auth استفاده کنید
     if (password === 'sam123') {
       setIsAuthenticated(true);
       localStorage.setItem('medium_admin_auth', 'true');
@@ -64,7 +63,7 @@ export default function AdminPage() {
     if (!error) { setAllArticles(allArticles.filter(a => !selectedIds.includes(a.id))); setSelectedIds([]); alert('🗑️ پاک شدند!'); }
   };
 
-  // --- ربات نویسنده (Jina + Gemini 1.5 Flash) ---
+  // --- ربات نویسنده (نسخه کلاینت‌ساید با ۳ پروکسی چرخشی) ---
   const [autoUrl, setAutoUrl] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [processLog, setProcessLog] = useState('');
@@ -73,34 +72,45 @@ export default function AdminPage() {
     if (!autoUrl.length) { alert('لینک را وارد کنید'); return; }
     
     setIsProcessing(true);
-    setProcessLog('');
+    setProcessLog('⏳ شروع عملیات...');
 
     try {
-      // ۱. ارسال به API داخلی خودمان برای دانلود مقاله (رفع ارور 429)
-      setProcessLog('⏳ اتصال به سرور (استخراج متن)...');
+      // ۱. استخراج متن با استراتژی چند پروکسی (Multi-Proxy)
+      // اگر اولی ارور 429 داد، دومی اجرا می‌شود و ...
+      const jinaUrl = `https://r.jina.ai/${autoUrl}`;
+      let articleText = '';
       
-      const response = await fetch('/api/extract', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: autoUrl })
-      });
+      const proxies = [
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(jinaUrl)}`, // پروکسی ۱: تمیز و سریع
+        `https://corsproxy.io/?${encodeURIComponent(jinaUrl)}`,             // پروکسی ۲: معروف ولی گاهی محدود
+        `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(jinaUrl)}` // پروکسی ۳: پشتیبان قوی
+      ];
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'خطا در دانلود مقاله');
+      for (const proxy of proxies) {
+        try {
+          setProcessLog(`🔄 تلاش برای دانلود (پروکسی جدید)...`);
+          const response = await fetch(proxy);
+          if (response.ok) {
+            const text = await response.text();
+            // چک می‌کنیم متن واقعی باشد نه صفحه ارور
+            if (text.length > 500 && !text.includes('Access Denied') && !text.includes('Too Many Requests')) {
+              articleText = text;
+              console.log('Downloaded via:', proxy);
+              break; // موفق شدیم، از حلقه خارج شو
+            }
+          }
+        } catch (e) {
+          console.warn('Proxy failed, trying next...');
+        }
       }
-      
-      // گاهی Jina خروجی را در فیلد text یا data برمی‌گرداند، اینجا مطمئن می‌شویم
-      const articleText = typeof data.text === 'string' ? data.text : JSON.stringify(data);
 
-      if (!articleText || articleText.length < 200 || articleText.includes('Access Denied')) {
-        throw new Error('متن مقاله دانلود نشد یا دسترسی مسدود است.');
+      if (!articleText) {
+        throw new Error('دانلود مقاله شکست خورد. تمامی سرورهای کمکی مشغول هستند. لطفاً ۱ دقیقه دیگر تلاش کنید.');
       }
 
-      setProcessLog('🤖 ارسال به Gemini (مدل Flash) برای ترجمه...');
+      setProcessLog('🤖 ارسال به Gemini (مدل Flash)...');
 
-      // ۲. کانفیگ Gemini
+      // ۲. هوش مصنوعی
       const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
       if(!apiKey) throw new Error('کلید Gemini پیدا نشد. فایل .env.local را چک کنید');
 
@@ -128,26 +138,32 @@ export default function AdminPage() {
         - source_url: "${autoUrl}".
         
         Article Content:
-        ${articleText.substring(0, 30000)}
+        ${articleText.substring(0, 25000)}
       `;
 
       const aiResult = await model.generateContent(prompt);
       const aiResponse = aiResult.response.text();
       
-      // ۳. تمیز کردن JSON (حذف ```json و ``` احتمالی)
+      // تمیز کردن JSON
       const cleanJson = aiResponse.replace(/```json/g, '').replace(/```/g, '').trim();
       
       let articleData;
       try {
+        // تلاش اول برای پارس کردن
         articleData = JSON.parse(cleanJson);
       } catch (e) {
-        console.error("JSON Error:", cleanJson);
-        throw new Error('هوش مصنوعی پاسخ نامعتبر داد. (مشکل فرمت JSON)');
+        // تلاش دوم: اگر متن اضافی داشت، فقط براکت‌ها را پیدا کن
+        const jsonMatch = cleanJson.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+            articleData = JSON.parse(jsonMatch[0]);
+        } else {
+            throw new Error('هوش مصنوعی پاسخ نامعتبر داد (مشکل JSON).');
+        }
       }
 
       setProcessLog('💾 ذخیره در دیتابیس...');
 
-      // ۴. ذخیره در Supabase
+      // ۳. ذخیره
       const finalSlug = articleData.slug || articleData.title.replace(/\s+/g, '-').toLowerCase();
       
       const { error } = await supabase.from('articles').insert([{
@@ -157,8 +173,8 @@ export default function AdminPage() {
       }]);
 
       if (error) {
-        if (error.code === '23505') throw new Error('این مقاله قبلاً ثبت شده است (Slug تکراری).');
-        throw error;
+         if (error.code === '23505') throw new Error('این مقاله قبلاً ثبت شده است (Slug تکراری).');
+         throw error;
       }
 
       alert('✅ مقاله با موفقیت ترجمه و منتشر شد!');
@@ -167,7 +183,7 @@ export default function AdminPage() {
       
     } catch (error: any) {
       console.error(error);
-      alert('❌ خطا: ' + (error.message || 'مشکل ناشناخته'));
+      alert('❌ خطا: ' + (error.message || 'مشکل در ارتباط'));
       setProcessLog('');
     } finally {
       setIsProcessing(false);
