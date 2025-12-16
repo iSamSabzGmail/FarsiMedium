@@ -3,34 +3,29 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Lock, Layers, FileText, Users, LogOut, Loader2, Link as LinkIcon, FileType, CheckSquare, Square, Trash2, Eye, Key, Wand2, Check } from 'lucide-react';
+import { ArrowLeft, Lock, FileText, LogOut, Loader2, Save, Trash2, Eye, CheckCircle, Code, PenTool, CheckSquare, Square, Check } from 'lucide-react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 
 export default function AdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [password, setPassword] = useState('');
-  const [activeTab, setActiveTab] = useState<'create' | 'requests' | 'manage'>('create');
+  const [activeTab, setActiveTab] = useState<'generator' | 'json_import' | 'manage'>('generator');
   
-  // تنظیمات ورودی
-  const [inputType, setInputType] = useState<'link' | 'text'>('link');
-  const [manualText, setManualText] = useState('');
-  const [jinaKey, setJinaKey] = useState(''); 
-
-  const [requests, setRequests] = useState<any[]>([]);
+  // ورودی‌ها
+  const [rawText, setRawText] = useState('');
+  const [jsonInput, setJsonInput] = useState('');
+  
+  // وضعیت‌ها
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processLog, setProcessLog] = useState('');
   const [allArticles, setAllArticles] = useState<any[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
-  // --- احراز هویت و لود کردن کلید ---
+  // --- احراز هویت ---
   useEffect(() => {
     const isLoggedIn = localStorage.getItem('medium_admin_auth');
     if (isLoggedIn === 'true') setIsAuthenticated(true);
-    
-    const envKey = process.env.NEXT_PUBLIC_JINA_API_KEY;
-    const localKey = localStorage.getItem('jina_api_key');
-    
-    if (envKey) setJinaKey(envKey);
-    else if (localKey) setJinaKey(localKey);
   }, []);
 
   const checkPassword = () => {
@@ -48,16 +43,11 @@ export default function AdminPage() {
     setPassword('');
   };
 
-  const saveJinaKey = (val: string) => {
-    setJinaKey(val);
-    localStorage.setItem('jina_api_key', val);
-  };
-
-  // --- دریافت داده‌ها ---
+  // --- دریافت لیست مقالات ---
   useEffect(() => {
-    if (!isAuthenticated) return;
-    if (activeTab === 'manage') fetchArticles();
-    if (activeTab === 'requests') fetchRequests();
+    if (isAuthenticated && activeTab === 'manage') {
+      fetchArticles();
+    }
   }, [isAuthenticated, activeTab]);
 
   const fetchArticles = async () => {
@@ -65,11 +55,7 @@ export default function AdminPage() {
     setAllArticles(data || []);
   };
 
-  const fetchRequests = async () => {
-    const { data } = await supabase.from('requests').select('*').eq('status', 'pending').order('created_at', { ascending: false });
-    setRequests(data || []);
-  };
-
+  // --- مدیریت مقالات (حذف) ---
   const toggleSelect = (id: string) => { if (selectedIds.includes(id)) setSelectedIds(selectedIds.filter(item => item !== id)); else setSelectedIds([...selectedIds, id]); };
   const toggleSelectAll = () => { if (selectedIds.length === allArticles.length) setSelectedIds([]); else setSelectedIds(allArticles.map(a => a.id)); };
   const deleteSelected = async () => {
@@ -78,128 +64,45 @@ export default function AdminPage() {
     if (!error) { setAllArticles(allArticles.filter(a => !selectedIds.includes(a.id))); setSelectedIds([]); alert('🗑️ پاک شدند!'); }
   };
 
-  // --- ربات نویسنده ---
-  const [autoUrl, setAutoUrl] = useState('');
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [processLog, setProcessLog] = useState('');
-
-  const handleAutoProcess = async () => {
-    if (inputType === 'link' && !autoUrl.length) { alert('لینک را وارد کنید'); return; }
-    if (inputType === 'text' && manualText.length < 50) { alert('متن مقاله خیلی کوتاه است'); return; }
+  // ----------------------------------------------------------------
+  // روش اول: تولید محتوا از متن (Text -> AI -> Save)
+  // ----------------------------------------------------------------
+  const handleGenerateFromText = async () => {
+    if (rawText.length < 50) { alert('متن وارد شده خیلی کوتاه است!'); return; }
     
     setIsProcessing(true);
-    setProcessLog('⏳ شروع عملیات...');
+    setProcessLog('🤖 در حال ترجمه و بازنویسی با Gemini...');
 
     try {
-      let articleText = '';
-      let sourceMethod = 'Manual';
-
-      if (inputType === 'text') {
-        articleText = manualText;
-        setProcessLog('📝 متن دستی دریافت شد...');
-      } else {
-        const jinaBaseUrl = `https://r.jina.ai/${autoUrl}`;
-        setProcessLog('🌐 تلاش برای دانلود مقاله...');
-
-        // ---------------------------------------------------------
-        // روش ۱: اتصال مستقیم به Jina (چون VPN دارید، این بهترین روش است)
-        // ---------------------------------------------------------
-        if (jinaKey && jinaKey.length > 5) {
-             setProcessLog('🔑 اتصال مستقیم به Jina با کلید...');
-             try {
-                 const res = await fetch(jinaBaseUrl, {
-                     method: 'GET',
-                     headers: {
-                         'Authorization': `Bearer ${jinaKey}`,
-                         'X-Return-Format': 'markdown',
-                         'Accept': 'application/json' // درخواست JSON برای دور زدن برخی مشکلات متن
-                     }
-                 });
-                 
-                 if(res.ok) {
-                     const contentType = res.headers.get("content-type");
-                     if (contentType && contentType.includes("application/json")) {
-                        const data = await res.json();
-                        articleText = data.data?.content || data.text || JSON.stringify(data);
-                     } else {
-                        articleText = await res.text();
-                     }
-                     sourceMethod = 'Jina Direct';
-                 } else {
-                     console.warn("Jina Direct Failed Status:", res.status);
-                 }
-             } catch(e) { console.warn('Jina Direct Error:', e); }
-        }
-
-        // ---------------------------------------------------------
-        // روش ۲: دانلود HTML خام با AllOrigins (اگر Jina کار نکرد)
-        // این روش ربات‌های ضد اسکرپ را دور می‌زند چون JSON برمی‌گرداند
-        // ---------------------------------------------------------
-        if (!articleText) {
-             setProcessLog('🌍 دانلود HTML خام (AllOrigins)...');
-             try {
-                 // درخواست خودِ سایت مدیوم (نه Jina)
-                 const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(autoUrl)}`);
-                 if (res.ok) {
-                    const data = await res.json();
-                    if (data.contents && data.contents.length > 1000) {
-                        articleText = data.contents; // کل HTML صفحه
-                        sourceMethod = 'Raw HTML via AllOrigins';
-                    }
-                 }
-             } catch (e) { console.log('AllOrigins failed'); }
-        }
-
-        // ---------------------------------------------------------
-        // روش ۳: دانلود HTML خام با CodeTabs
-        // ---------------------------------------------------------
-        if (!articleText) {
-            setProcessLog('🌍 دانلود HTML خام (CodeTabs)...');
-            try {
-                const res = await fetch(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(autoUrl)}`);
-                if (res.ok) {
-                    const text = await res.text();
-                    if (text.length > 1000) {
-                        articleText = text;
-                        sourceMethod = 'Raw HTML via CodeTabs';
-                    }
-                }
-            } catch (e) {}
-        }
-
-        if (!articleText || articleText.length < 500) {
-          throw new Error('دانلود مقاله با تمام روش‌ها شکست خورد. لطفاً متن مقاله را دستی کپی کنید.');
-        }
-      }
-
-      setProcessLog(`🤖 ارسال به Gemini (منبع: ${sourceMethod})...`);
-
       const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-      if(!apiKey) throw new Error('کلید Gemini پیدا نشد.');
+      if(!apiKey) throw new Error('کلید Gemini پیدا نشد. فایل .env.local را چک کنید.');
 
       const prompt = `
         You are a professional Persian tech editor.
-        Task: Rewrite this article for a Persian blog.
-        Rules: Fluent Persian, Markdown format, JSON Output ONLY.
+        Task: Rewrite the provided text into a high-quality Persian blog post.
         
-        IMPORTANT: The Input might be Raw HTML. Ignore HTML tags, ads, and scripts. Extract the main article content.
+        Rules:
+        1. Output ONLY valid JSON. No markdown code blocks.
+        2. Language: Fluent Persian (Farsi).
+        3. Format: Markdown for content.
 
         JSON Structure:
         {
-          "title": "Persian Title",
-          "slug": "english-slug-unique",
-          "summary": "Persian Summary",
-          "content": "Markdown Content",
-          "category": "Tech/AI/Startup",
-          "read_time": "5 min",
-          "cover_url": "Valid Image URL or null",
-          "source_url": "${inputType === 'link' ? autoUrl : 'Manual Input'}"
+          "title": "عنوان جذاب فارسی",
+          "slug": "english-slug-kebab-case",
+          "summary": "خلاصه ۲ خطی جذاب",
+          "content": "# تیتر اصلی\n\nمتن مقاله به صورت مارک‌داون...",
+          "category": "تکنولوژی",
+          "read_time": "۵ دقیقه",
+          "cover_url": "https://images.unsplash.com/photo-1488590528505-98d2b5aba04b?auto=format&fit=crop&w=1200&q=80"
         }
+        (Note: For cover_url, choose a random relevant Unsplash ID if specific one not found)
 
-        Input Data:
-        ${articleText.substring(0, 45000)}
+        Input Text:
+        ${rawText.substring(0, 30000)}
       `;
 
+      // درخواست مستقیم به گوگل
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
         {
@@ -209,52 +112,77 @@ export default function AdminPage() {
         }
       );
 
-      if (!response.ok) {
-        throw new Error(`خطای هوش مصنوعی (${response.status}).`);
-      }
+      if (!response.ok) throw new Error(`خطای گوگل: ${response.status}`);
 
-      const aiResult = await response.json();
-      const aiResponseText = aiResult.candidates?.[0]?.content?.parts?.[0]?.text;
-
-      if (!aiResponseText) throw new Error('پاسخ خالی از هوش مصنوعی دریافت شد.');
-
-      const cleanJson = aiResponseText.replace(/```json/g, '').replace(/```/g, '').trim();
-      let articleData;
+      const result = await response.json();
+      const aiText = result.candidates?.[0]?.content?.parts?.[0]?.text;
       
-      try {
-        articleData = JSON.parse(cleanJson);
-      } catch (e) {
-        const jsonMatch = cleanJson.match(/\{[\s\S]*\}/);
-        if (jsonMatch) articleData = JSON.parse(jsonMatch[0]);
-        else throw new Error('فرمت پاسخ صحیح نیست.');
-      }
+      if (!aiText) throw new Error('پاسخی دریافت نشد.');
 
-      setProcessLog('💾 ذخیره در دیتابیس...');
+      // تمیزکاری و پارس کردن JSON
+      const cleanJson = aiText.replace(/```json/g, '').replace(/```/g, '').trim();
+      const articleData = JSON.parse(cleanJson);
 
-      const finalSlug = articleData.slug || articleData.title.replace(/\s+/g, '-').toLowerCase();
+      await saveToSupabase(articleData);
       
-      const { error } = await supabase.from('articles').insert([{
-        ...articleData,
-        slug: finalSlug + '-' + Math.floor(Math.random() * 10000),
-        published: true
-      }]);
-
-      if (error) throw error;
-
-      alert('✅ مقاله با موفقیت منتشر شد!');
-      if(inputType === 'link') setAutoUrl('');
-      setManualText('');
+      setRawText('');
       
     } catch (error: any) {
       console.error(error);
-      alert('❌ خطا: ' + (error.message || 'مشکل ناشناخته'));
+      alert('❌ خطا: ' + error.message);
     } finally {
       setIsProcessing(false);
       setProcessLog('');
     }
   };
 
-  const markAsDone = async (id: string) => { await supabase.from('requests').update({ status: 'done' }).eq('id', id); fetchRequests(); };
+  // ----------------------------------------------------------------
+  // روش دوم: ورود مستقیم JSON (Paste JSON -> Save)
+  // ----------------------------------------------------------------
+  const handleImportJson = async () => {
+    try {
+        if (!jsonInput.trim()) return;
+        setIsProcessing(true);
+        setProcessLog('💾 در حال اعتبارسنجی و ذخیره...');
+
+        let data;
+        try {
+            data = JSON.parse(jsonInput);
+        } catch (e) {
+            throw new Error('فرمت JSON اشتباه است. لطفاً چک کنید.');
+        }
+
+        await saveToSupabase(data);
+        setJsonInput('');
+
+    } catch (error: any) {
+        alert('❌ خطا: ' + error.message);
+    } finally {
+        setIsProcessing(false);
+        setProcessLog('');
+    }
+  };
+
+  // تابع مشترک ذخیره در دیتابیس
+  const saveToSupabase = async (data: any) => {
+      // اطمینان از یونیک بودن اسلاگ
+      const finalSlug = (data.slug || data.title).replace(/\s+/g, '-').toLowerCase() + '-' + Math.floor(Math.random() * 1000);
+      
+      const { error } = await supabase.from('articles').insert([{
+        title: data.title,
+        slug: finalSlug,
+        summary: data.summary,
+        content: data.content,
+        category: data.category || 'عمومی',
+        read_time: data.read_time || '۳ دقیقه',
+        cover_url: data.cover_url,
+        published: true,
+        source_url: 'Manual Entry'
+      }]);
+
+      if (error) throw error;
+      alert('✅ مقاله با موفقیت ذخیره شد!');
+  };
 
   if (!isAuthenticated) return (
     <div className="min-h-screen flex items-center justify-center p-4 font-vazir" dir="rtl">
@@ -277,91 +205,76 @@ export default function AdminPage() {
             <button onClick={handleLogout} className="flex items-center gap-2 text-red-400 hover:text-red-300 bg-red-500/10 px-4 py-2 rounded-xl transition-colors text-sm font-bold"><LogOut size={16}/> خروج</button>
         </div>
 
+        {/* منوی تب‌ها */}
         <div className="flex flex-wrap gap-4 mb-8 bg-[#111]/80 backdrop-blur-md p-2 rounded-2xl border border-white/10 sticky top-24 z-40 shadow-xl">
-            <button onClick={() => setActiveTab('create')} className={`flex-1 px-4 py-3 rounded-xl font-bold transition-all text-sm flex items-center justify-center gap-2 ${activeTab === 'create' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}><Layers size={18}/> ربات نویسنده</button>
+            <button onClick={() => setActiveTab('generator')} className={`flex-1 px-4 py-3 rounded-xl font-bold transition-all text-sm flex items-center justify-center gap-2 ${activeTab === 'generator' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}><PenTool size={18}/> تبدیل متن به مقاله</button>
+            <button onClick={() => setActiveTab('json_import')} className={`flex-1 px-4 py-3 rounded-xl font-bold transition-all text-sm flex items-center justify-center gap-2 ${activeTab === 'json_import' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}><Code size={18}/> ایمپورت JSON</button>
             <button onClick={() => setActiveTab('manage')} className={`flex-1 px-4 py-3 rounded-xl font-bold transition-all text-sm flex items-center justify-center gap-2 ${activeTab === 'manage' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}><FileText size={18}/> مدیریت مقالات</button>
-            <button onClick={() => setActiveTab('requests')} className={`flex-1 px-4 py-3 rounded-xl font-bold transition-all text-sm flex items-center justify-center gap-2 ${activeTab === 'requests' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}><Users size={18}/> درخواست‌ها {requests.length > 0 && <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full">{requests.length}</span>}</button>
         </div>
 
-        {activeTab === 'create' && (
-          <div className="animate-in fade-in max-w-2xl mx-auto">
-            <div className="bg-gradient-to-br from-blue-900/20 to-purple-900/20 border border-blue-500/30 p-8 rounded-3xl mb-8 shadow-2xl relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/20 blur-[60px] -z-10"></div>
-              
+        {/* ۱. تب تبدیل متن به مقاله */}
+        {activeTab === 'generator' && (
+          <div className="animate-in fade-in max-w-3xl mx-auto">
+            <div className="bg-gradient-to-br from-blue-900/20 to-purple-900/20 border border-blue-500/30 p-8 rounded-3xl mb-8 shadow-2xl">
               <div className="flex items-center gap-3 mb-6 text-blue-300">
-                <div className="p-3 bg-blue-500/20 rounded-xl"><Wand2 size={28} /></div>
+                <div className="p-3 bg-blue-500/20 rounded-xl"><PenTool size={28} /></div>
                 <div>
-                  <h3 className="font-bold text-xl text-white">تولید محتوای خودکار</h3>
-                  <p className="text-sm text-gray-400">لینک یا متن مقاله را وارد کنید</p>
+                  <h3 className="font-bold text-xl text-white">تولید محتوا با هوش مصنوعی</h3>
+                  <p className="text-sm text-gray-400">متن انگلیسی (یا فارسی خام) را وارد کنید تا به مقاله کامل تبدیل شود.</p>
                 </div>
               </div>
 
-              {/* انتخاب روش ورودی */}
-              <div className="flex flex-wrap items-center gap-3 mb-4">
-                 <div className="flex bg-black/40 p-1 rounded-xl w-fit">
-                    <button onClick={() => setInputType('link')} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${inputType === 'link' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}><LinkIcon size={16}/> لینک</button>
-                    <button onClick={() => setInputType('text')} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${inputType === 'text' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}><FileType size={16}/> متن دستی</button>
-                 </div>
-                 
-                 {/* ورودی کلید Jina */}
-                 {inputType === 'link' && (
-                     <div className="flex-1 min-w-[200px] relative">
-                        <input 
-                            type="text" 
-                            placeholder="کلید Jina (خودکار از تنظیمات پر می‌شود)" 
-                            className="w-full bg-black/40 border border-white/10 rounded-xl py-2 pl-10 pr-4 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
-                            value={jinaKey}
-                            onChange={(e) => saveJinaKey(e.target.value)}
-                        />
-                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-yellow-500"><Key size={14}/></div>
-                     </div>
-                 )}
-              </div>
-
-              <div className="space-y-4">
-                {inputType === 'link' ? (
-                    <div className="relative">
-                      <input 
-                        type="url" 
-                        placeholder="https://medium.com/..." 
-                        className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 pr-12 pl-4 text-white text-left dir-ltr placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-all"
-                        value={autoUrl}
-                        onChange={(e) => setAutoUrl(e.target.value)}
-                        disabled={isProcessing}
-                      />
-                      <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500"><LinkIcon size={20}/></div>
-                    </div>
-                ) : (
-                    <textarea 
-                        placeholder="متن مقاله را اینجا پیست کنید..." 
-                        className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-white text-left dir-ltr placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-all min-h-[150px]"
-                        value={manualText}
-                        onChange={(e) => setManualText(e.target.value)}
-                        disabled={isProcessing}
-                    />
-                )}
-
-                <button 
-                  onClick={handleAutoProcess} 
+              <textarea 
+                  placeholder="متن مقاله را اینجا کپی کنید..." 
+                  className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-white text-left dir-ltr placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-all min-h-[250px] mb-4"
+                  value={rawText}
+                  onChange={(e) => setRawText(e.target.value)}
                   disabled={isProcessing}
-                  className="w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-2xl font-bold text-lg shadow-lg shadow-blue-900/40 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 transition-all hover:scale-[1.02]"
-                >
-                  {isProcessing ? (
-                    <><Loader2 className="animate-spin"/> {processLog}</>
-                  ) : (
-                    <>شروع پردازش <ArrowLeft/></>
-                  )}
-                </button>
-                
-                {inputType === 'link' && !jinaKey && (
-                    <p className="text-xs text-yellow-500/80 text-center mt-2">نکته: بدون کلید Jina، ممکن است دانلود برخی مقالات توسط مدیوم مسدود شود.</p>
-                )}
-              </div>
+              />
+
+              <button 
+                onClick={handleGenerateFromText} 
+                disabled={isProcessing}
+                className="w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-2xl font-bold text-lg shadow-lg shadow-blue-900/40 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 transition-all"
+              >
+                {isProcessing ? <><Loader2 className="animate-spin"/> {processLog}</> : <>✨ تبدیل و انتشار</>}
+              </button>
             </div>
           </div>
         )}
 
-        {/* لیست مقالات (Manage) */}
+        {/* ۲. تب ایمپورت JSON */}
+        {activeTab === 'json_import' && (
+          <div className="animate-in fade-in max-w-3xl mx-auto">
+            <div className="bg-[#111] border border-white/10 p-8 rounded-3xl mb-8">
+              <div className="flex items-center gap-3 mb-6 text-green-400">
+                <div className="p-3 bg-green-500/20 rounded-xl"><Code size={28} /></div>
+                <div>
+                  <h3 className="font-bold text-xl text-white">ورود دستی JSON</h3>
+                  <p className="text-sm text-gray-400">اگر فایل جیسون آماده دارید، اینجا وارد کنید.</p>
+                </div>
+              </div>
+
+              <textarea 
+                  placeholder='{ "title": "...", "content": "..." }' 
+                  className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-green-400 font-mono text-xs text-left dir-ltr placeholder-gray-700 focus:outline-none focus:border-green-500 transition-all min-h-[250px] mb-4"
+                  value={jsonInput}
+                  onChange={(e) => setJsonInput(e.target.value)}
+                  disabled={isProcessing}
+              />
+
+              <button 
+                onClick={handleImportJson} 
+                disabled={isProcessing}
+                className="w-full bg-green-600 hover:bg-green-500 text-white py-4 rounded-2xl font-bold text-lg shadow-lg shadow-green-900/40 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 transition-all"
+              >
+                {isProcessing ? <><Loader2 className="animate-spin"/> {processLog}</> : <><Save/> ذخیره در دیتابیس</>}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ۳. تب مدیریت */}
         {activeTab === 'manage' && (
           <div className="space-y-4 animate-in fade-in">
              <div className="flex justify-between items-center bg-blue-900/20 border border-blue-500/20 p-4 rounded-xl text-sm">
@@ -376,18 +289,6 @@ export default function AdminPage() {
                 </div>
                 ))}
              </div>
-          </div>
-        )}
-
-        {/* درخواست‌ها */}
-        {activeTab === 'requests' && (
-          <div className="space-y-4 animate-in fade-in">
-            {requests.length === 0 ? <p className="text-gray-500 text-center py-20 bg-white/5 rounded-3xl">صف خالی است.</p> : requests.map(req => (
-              <div key={req.id} className="bg-[#111] border border-white/10 p-4 rounded-xl flex items-center justify-between">
-                <p className="text-blue-400 text-sm truncate w-96 dir-ltr text-left font-mono">{req.url}</p>
-                <div className="flex gap-2"><button onClick={() => {navigator.clipboard.writeText(req.url); setAutoUrl(req.url); setActiveTab('create');}} className="px-3 py-1.5 bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white rounded-lg text-xs font-bold transition-colors">ترجمه خودکار</button><button onClick={() => markAsDone(req.id)} className="p-2 bg-green-500/20 text-green-500 rounded-lg"><Check size={18}/></button></div>
-              </div>
-            ))}
           </div>
         )}
 
