@@ -3,7 +3,6 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-// ایمپورت‌ها اصلاح شد: Wand2 و Check اضافه شدند
 import { ArrowLeft, Lock, Layers, FileText, Users, LogOut, Loader2, Link as LinkIcon, FileType, CheckSquare, Square, Trash2, Eye, Key, Wand2, Check } from 'lucide-react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
@@ -16,19 +15,27 @@ export default function AdminPage() {
   // تنظیمات ورودی
   const [inputType, setInputType] = useState<'link' | 'text'>('link');
   const [manualText, setManualText] = useState('');
-  const [jinaKey, setJinaKey] = useState(''); // کلید Jina برای دور زدن تحریم‌ها
+  const [jinaKey, setJinaKey] = useState(''); 
 
   const [requests, setRequests] = useState<any[]>([]);
   const [allArticles, setAllArticles] = useState<any[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
-  // --- احراز هویت ---
+  // --- احراز هویت و لود کردن کلید ---
   useEffect(() => {
+    // 1. چک کردن لاگین
     const isLoggedIn = localStorage.getItem('medium_admin_auth');
     if (isLoggedIn === 'true') setIsAuthenticated(true);
-    // بازیابی کلید Jina اگر قبلا ذخیره شده
-    const savedJina = localStorage.getItem('jina_api_key');
-    if (savedJina) setJinaKey(savedJina);
+    
+    // 2. تلاش برای پیدا کردن کلید Jina (اولویت با متغیر محیطی، بعد لوکال استوریج)
+    const envKey = process.env.NEXT_PUBLIC_JINA_API_KEY;
+    const localKey = localStorage.getItem('jina_api_key');
+    
+    if (envKey) {
+        setJinaKey(envKey);
+    } else if (localKey) {
+        setJinaKey(localKey);
+    }
   }, []);
 
   const checkPassword = () => {
@@ -51,7 +58,7 @@ export default function AdminPage() {
     localStorage.setItem('jina_api_key', val);
   };
 
-  // --- دریافت مقالات ---
+  // --- دریافت داده‌ها ---
   useEffect(() => {
     if (!isAuthenticated) return;
     if (activeTab === 'manage') fetchArticles();
@@ -68,7 +75,6 @@ export default function AdminPage() {
     setRequests(data || []);
   };
 
-  // --- مدیریت انتخاب‌ها ---
   const toggleSelect = (id: string) => { if (selectedIds.includes(id)) setSelectedIds(selectedIds.filter(item => item !== id)); else setSelectedIds([...selectedIds, id]); };
   const toggleSelectAll = () => { if (selectedIds.length === allArticles.length) setSelectedIds([]); else setSelectedIds(allArticles.map(a => a.id)); };
   const deleteSelected = async () => {
@@ -77,7 +83,7 @@ export default function AdminPage() {
     if (!error) { setAllArticles(allArticles.filter(a => !selectedIds.includes(a.id))); setSelectedIds([]); alert('🗑️ پاک شدند!'); }
   };
 
-  // --- ربات نویسنده (نسخه نهایی و پایدار) ---
+  // --- ربات نویسنده (Jina Key Integration) ---
   const [autoUrl, setAutoUrl] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [processLog, setProcessLog] = useState('');
@@ -92,80 +98,73 @@ export default function AdminPage() {
     try {
       let articleText = '';
 
-      // ۱. استخراج متن
       if (inputType === 'text') {
         articleText = manualText;
         setProcessLog('📝 متن دستی دریافت شد...');
       } else {
         const targetUrl = `https://r.jina.ai/${autoUrl}`;
-        setProcessLog('🌐 تلاش برای دانلود مقاله...');
+        setProcessLog('🌐 تماس با سرور Jina...');
 
-        // استراتژی ۱: اگر کلید Jina باشد (تضمینی)
-        if (jinaKey.length > 5) {
-             setProcessLog('🔑 استفاده از کلید Jina (روش مطمئن)...');
+        // استراتژی ۱: استفاده از کلید Jina (مستقیم و قدرتمند)
+        if (jinaKey && jinaKey.length > 5) {
+             setProcessLog('🔑 دانلود با اکانت پرمیوم Jina...');
              try {
-                 // استفاده از پروکسی که هدرها را عبور دهد
-                 const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(targetUrl)}`, {
+                 const res = await fetch(targetUrl, {
                      headers: {
                          'Authorization': `Bearer ${jinaKey}`,
-                         'X-Return-Format': 'markdown'
+                         'X-Return-Format': 'markdown',
+                         'Accept': 'application/json'
                      }
                  });
+                 
                  if(res.ok) {
-                     articleText = await res.text();
+                     // Jina با کلید معمولا JSON برمیگرداند یا Text
+                     const contentType = res.headers.get("content-type");
+                     if (contentType && contentType.indexOf("application/json") !== -1) {
+                        const data = await res.json();
+                        articleText = data.data?.content || data.text || JSON.stringify(data);
+                     } else {
+                        articleText = await res.text();
+                     }
+                     console.log("Downloaded via Jina Key");
+                 } else {
+                     console.warn("Jina Direct Failed:", res.status);
                  }
-             } catch(e) { console.log('Jina Key method failed via proxy'); }
+             } catch(e) { console.warn('Jina Key method failed:', e); }
         }
 
-        // استراتژی ۲: بدون کلید (AllOrigins - JSON)
+        // استراتژی ۲: اگر کلید نبود یا کار نکرد (پروکسی CodeTabs)
         if (!articleText) {
-            setProcessLog('🔄 تلاش با سرور کمکی ۱...');
-            try {
-                const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`);
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data.contents && data.contents.length > 500 && !data.contents.includes('Access Denied')) {
-                        articleText = data.contents;
-                    }
-                }
-            } catch (e) { console.log('AllOrigins failed'); }
-        }
-
-        // استراتژی ۳: CodeTabs (Text)
-        if (!articleText) {
-             setProcessLog('🔄 تلاش با سرور کمکی ۲...');
+             setProcessLog('🔄 تلاش با سرور کمکی (بدون کلید)...');
              try {
                  const res = await fetch(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`);
                  if (res.ok) {
                      const text = await res.text();
-                     if (text.length > 500) articleText = text;
+                     if (text.length > 500 && !text.includes('Access Denied')) articleText = text;
                  }
              } catch (e) { console.log('CodeTabs failed'); }
         }
 
-        // استراتژی ۴: دانلود مستقیم HTML (نه از طریق Jina)
+        // استراتژی ۳: AllOrigins
         if (!articleText) {
-            setProcessLog('⚠️ تلاش نهایی: دانلود HTML خام...');
             try {
-                // اینجا خود لینک مدیوم را به پروکسی می‌دهیم نه لینک Jina را
-                const res = await fetch(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(autoUrl)}`);
+                const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`);
                 if (res.ok) {
                     const text = await res.text();
-                    if (text.length > 1000) articleText = text; // هوش مصنوعی HTML را می‌فهمد
+                    if (text.length > 500) articleText = text;
                 }
-            } catch(e) {}
+            } catch (e) {}
         }
 
-        if (!articleText || articleText.includes('Access Denied') || articleText.includes('403 Forbidden')) {
-          throw new Error('دانلود خودکار توسط مدیوم مسدود شد. لطفاً کلید رایگان Jina بگیرید یا متن را دستی کپی کنید.');
+        if (!articleText || articleText.includes('Access Denied')) {
+          throw new Error('دانلود مقاله شکست خورد. اگر کلید Jina وارد کرده‌اید، مطمئن شوید درست است. در غیر این صورت متن را دستی وارد کنید.');
         }
       }
 
-      setProcessLog('🤖 ارسال به گوگل Gemini...');
+      setProcessLog('🤖 ارسال به Gemini...');
 
-      // ۲. پردازش با Gemini (درخواست مستقیم)
       const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-      if(!apiKey) throw new Error('کلید Gemini پیدا نشد. فایل env.local را چک کنید.');
+      if(!apiKey) throw new Error('کلید Gemini پیدا نشد.');
 
       const prompt = `
         You are a professional Persian tech editor.
@@ -184,11 +183,10 @@ export default function AdminPage() {
           "source_url": "${inputType === 'link' ? autoUrl : 'Manual Input'}"
         }
 
-        Input Text (HTML or Markdown):
-        ${articleText.substring(0, 30000)}
+        Input Text:
+        ${articleText.substring(0, 35000)}
       `;
 
-      // استفاده از مدل gemini-1.5-flash
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
         {
@@ -199,7 +197,7 @@ export default function AdminPage() {
       );
 
       if (!response.ok) {
-        throw new Error(`خطای هوش مصنوعی (${response.status}). لطفاً VPN را چک کنید.`);
+        throw new Error(`خطای هوش مصنوعی (${response.status}).`);
       }
 
       const aiResult = await response.json();
@@ -207,7 +205,6 @@ export default function AdminPage() {
 
       if (!aiResponseText) throw new Error('پاسخ خالی از هوش مصنوعی دریافت شد.');
 
-      // ۳. تمیزکاری JSON
       const cleanJson = aiResponseText.replace(/```json/g, '').replace(/```/g, '').trim();
       let articleData;
       
@@ -293,12 +290,12 @@ export default function AdminPage() {
                     <button onClick={() => setInputType('text')} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${inputType === 'text' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}><FileType size={16}/> متن دستی</button>
                  </div>
                  
-                 {/* ورودی کلید Jina */}
+                 {/* ورودی کلید Jina - اگر در env باشد خودکار پر میشود */}
                  {inputType === 'link' && (
                      <div className="flex-1 min-w-[200px] relative">
                         <input 
                             type="text" 
-                            placeholder="کلید Jina (برای رفع 100٪ تحریم)" 
+                            placeholder="کلید Jina (اگر در تنظیمات نباشد، اینجا وارد کنید)" 
                             className="w-full bg-black/40 border border-white/10 rounded-xl py-2 pl-10 pr-4 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
                             value={jinaKey}
                             onChange={(e) => saveJinaKey(e.target.value)}
@@ -344,7 +341,7 @@ export default function AdminPage() {
                 </button>
                 
                 {inputType === 'link' && !jinaKey && (
-                    <p className="text-xs text-yellow-500/80 text-center mt-2">نکته: بدون کلید Jina، ممکن است دانلود برخی مقالات توسط مدیوم مسدود شود. اگر خطا گرفتید، کلید بگیرید یا متن را دستی کپی کنید.</p>
+                    <p className="text-xs text-yellow-500/80 text-center mt-2">نکته: بدون کلید Jina، ممکن است دانلود برخی مقالات توسط مدیوم مسدود شود.</p>
                 )}
               </div>
             </div>
