@@ -1,8 +1,10 @@
+// --- START OF FILE app/admin/page.tsx ---
+
 'use client';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { ArrowLeft, Lock, Wand2, Users, Copy, Check, Layers, Trash2, FileText, Eye, LogOut, Square, CheckSquare, Loader2, Link as LinkIcon } from 'lucide-react';
+import { ArrowLeft, Lock, Wand2, Users, FileText, LogOut, Square, CheckSquare, Loader2, Link as LinkIcon, Check, Layers, Trash2, Eye } from 'lucide-react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 
@@ -22,6 +24,7 @@ export default function AdminPage() {
   }, []);
 
   const checkPassword = () => {
+    // نکته امنیتی: در پروژه واقعی بهتر است از Supabase Auth استفاده کنید
     if (password === 'sam123') {
       setIsAuthenticated(true);
       localStorage.setItem('medium_admin_auth', 'true');
@@ -48,7 +51,7 @@ export default function AdminPage() {
   }, [isAuthenticated, activeTab]);
 
   const fetchArticles = async () => {
-    const { data } = await supabase.from('articles').select('id, title, created_at, category').order('created_at', { ascending: false });
+    const { data } = await supabase.from('articles').select('id, title, created_at, category, slug').order('created_at', { ascending: false });
     setAllArticles(data || []);
   };
 
@@ -61,7 +64,7 @@ export default function AdminPage() {
     if (!error) { setAllArticles(allArticles.filter(a => !selectedIds.includes(a.id))); setSelectedIds([]); alert('🗑️ پاک شدند!'); }
   };
 
-  // --- ربات نویسنده (نسخه Gemini 1.5 Flash) ---
+  // --- ربات نویسنده (Jina + Gemini 1.5 Flash) ---
   const [autoUrl, setAutoUrl] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [processLog, setProcessLog] = useState('');
@@ -70,34 +73,38 @@ export default function AdminPage() {
     if (!autoUrl.length) { alert('لینک را وارد کنید'); return; }
     
     setIsProcessing(true);
-    setProcessLog('⏳ اتصال به سرور Jina (استخراج متن)...');
+    setProcessLog('');
 
     try {
-      // ۱. ساخت لینک Jina
-      const jinaUrl = `https://r.jina.ai/${autoUrl}`;
+      // ۱. ارسال به API داخلی خودمان برای دانلود مقاله (رفع ارور 429)
+      setProcessLog('⏳ اتصال به سرور (استخراج متن)...');
       
-      // ۲. استفاده از پروکسی قوی
-      const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(jinaUrl)}`;
-      
-      const response = await fetch(proxyUrl);
-      
-      if (!response.ok) throw new Error('خطا در دانلود مقاله. وضعیت: ' + response.status);
-      
-      // دریافت متن خام
-      const articleText = await response.text();
+      const response = await fetch('/api/extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: autoUrl })
+      });
 
-      if (articleText.length < 200 || articleText.includes('Access Denied')) {
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'خطا در دانلود مقاله');
+      }
+      
+      // گاهی Jina خروجی را در فیلد text یا data برمی‌گرداند، اینجا مطمئن می‌شویم
+      const articleText = typeof data.text === 'string' ? data.text : JSON.stringify(data);
+
+      if (!articleText || articleText.length < 200 || articleText.includes('Access Denied')) {
         throw new Error('متن مقاله دانلود نشد یا دسترسی مسدود است.');
       }
 
       setProcessLog('🤖 ارسال به Gemini (مدل Flash) برای ترجمه...');
 
-      // ۳. ارسال به Gemini
+      // ۲. کانفیگ Gemini
       const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
       if(!apiKey) throw new Error('کلید Gemini پیدا نشد. فایل .env.local را چک کنید');
 
       const genAI = new GoogleGenerativeAI(apiKey);
-      // 👇👇👇 تغییر نهایی و مهم: استفاده از مدل 1.5 Flash 👇👇👇
       const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
       const prompt = `
@@ -108,46 +115,51 @@ export default function AdminPage() {
         1. Language: Fluent, modern Persian (Farsi). NO Google Translate style.
         2. Tone: Educational and engaging.
         3. Structure: Use Markdown (# Title, ## Subtitle, - List).
-        4. Output: ONLY a valid JSON object.
+        4. Output: ONLY a valid JSON object. Do not add markdown code blocks around the JSON.
 
         JSON Fields:
         - title: Catchy Persian title.
-        - slug: English slug (kebab-case).
+        - slug: English slug (kebab-case, unique).
         - summary: 2-3 lines Persian summary.
-        - content: The rewritten article body in Markdown. Add "Source: [Link]" at the end.
+        - content: The rewritten article body in Markdown.
         - category: One of [تکنولوژی, توسعه فردی, هوش مصنوعی, استارتاپ, برنامه‌نویسی].
         - read_time: e.g. "۵ دقیقه".
         - cover_url: Find a relevant Unsplash image URL based on topic.
         - source_url: "${autoUrl}".
         
-        Article Content from Jina:
-        ${articleText.substring(0, 25000)}
+        Article Content:
+        ${articleText.substring(0, 30000)}
       `;
 
       const aiResult = await model.generateContent(prompt);
       const aiResponse = aiResult.response.text();
       
-      // تمیز کردن JSON
+      // ۳. تمیز کردن JSON (حذف ```json و ``` احتمالی)
       const cleanJson = aiResponse.replace(/```json/g, '').replace(/```/g, '').trim();
       
       let articleData;
       try {
         articleData = JSON.parse(cleanJson);
       } catch (e) {
-        throw new Error('هوش مصنوعی پاسخ نامعتبر داد. لطفاً دوباره تلاش کنید.');
+        console.error("JSON Error:", cleanJson);
+        throw new Error('هوش مصنوعی پاسخ نامعتبر داد. (مشکل فرمت JSON)');
       }
 
       setProcessLog('💾 ذخیره در دیتابیس...');
 
-      // ۴. ذخیره
+      // ۴. ذخیره در Supabase
       const finalSlug = articleData.slug || articleData.title.replace(/\s+/g, '-').toLowerCase();
+      
       const { error } = await supabase.from('articles').insert([{
         ...articleData,
         slug: finalSlug,
         published: true
       }]);
 
-      if (error) throw error;
+      if (error) {
+        if (error.code === '23505') throw new Error('این مقاله قبلاً ثبت شده است (Slug تکراری).');
+        throw error;
+      }
 
       alert('✅ مقاله با موفقیت ترجمه و منتشر شد!');
       setAutoUrl('');
@@ -155,7 +167,7 @@ export default function AdminPage() {
       
     } catch (error: any) {
       console.error(error);
-      alert('❌ خطا: ' + (error.message || 'مشکل در ارتباط'));
+      alert('❌ خطا: ' + (error.message || 'مشکل ناشناخته'));
       setProcessLog('');
     } finally {
       setIsProcessing(false);
@@ -233,7 +245,6 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* بخش‌های manage و requests مثل قبل ... */}
         {activeTab === 'manage' && (
           <div className="space-y-4 animate-in fade-in">
              <div className="flex justify-between items-center bg-blue-900/20 border border-blue-500/20 p-4 rounded-xl text-sm">
