@@ -3,7 +3,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-// کتابخانه گوگل حذف شد تا از درخواست مستقیم استفاده کنیم
+// ما از fetch مستقیم استفاده می‌کنیم، پس نیازی به ایمپورت کتابخانه گوگل نیست
 import { ArrowLeft, Lock, Wand2, Users, FileText, LogOut, Square, CheckSquare, Loader2, Link as LinkIcon, Layers, Trash2, Eye, FileType } from 'lucide-react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
@@ -65,7 +65,7 @@ export default function AdminPage() {
     if (!error) { setAllArticles(allArticles.filter(a => !selectedIds.includes(a.id))); setSelectedIds([]); alert('🗑️ پاک شدند!'); }
   };
 
-  // --- ربات نویسنده (درخواست مستقیم REST) ---
+  // --- ربات نویسنده (نسخه ضد گلوله) ---
   const [autoUrl, setAutoUrl] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [processLog, setProcessLog] = useState('');
@@ -79,45 +79,69 @@ export default function AdminPage() {
 
     try {
       let articleText = '';
+      let usedSource = 'Manual';
 
-      // ۱. دریافت متن (پروکسی یا دستی)
+      // ۱. دریافت متن (با ۳ روش مختلف)
       if (inputType === 'text') {
         articleText = manualText;
         setProcessLog('📝 متن دریافت شد...');
       } else {
         const jinaUrl = `https://r.jina.ai/${autoUrl}`;
         
-        // استراتژی پروکسی AllOrigins
-        try {
-            setProcessLog(`🔄 دانلود مقاله...`);
-            const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(jinaUrl)}`);
-            if (res.ok) {
-                const data = await res.json();
-                if (data.contents && data.contents.length > 500) {
-                    articleText = data.contents;
-                }
-            }
-        } catch (e) { console.log('Proxy failed'); }
-
+        // روش ۱: CodeTabs + Jina (معمولا قوی‌ترین)
         if (!articleText) {
-            // تلاش دوم با CorsProxy
-             try {
-                const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(jinaUrl)}`);
+            try {
+                setProcessLog(`🔄 تلاش با سرور ۱ (CodeTabs)...`);
+                const res = await fetch(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(jinaUrl)}`);
                 if (res.ok) {
                     const text = await res.text();
-                    if (text.length > 500) articleText = text;
+                    if (text.length > 500 && !text.includes('Access Denied')) {
+                        articleText = text;
+                        usedSource = 'Jina via CodeTabs';
+                    }
+                }
+            } catch (e) { console.log('Proxy 1 failed'); }
+        }
+
+        // روش ۲: AllOrigins Raw + Jina
+        if (!articleText) {
+            try {
+                setProcessLog(`🔄 تلاش با سرور ۲ (AllOrigins)...`);
+                const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(jinaUrl)}`);
+                if (res.ok) {
+                    const text = await res.text();
+                    if (text.length > 500) {
+                        articleText = text;
+                        usedSource = 'Jina via AllOrigins';
+                    }
                 }
             } catch (e) { console.log('Proxy 2 failed'); }
         }
 
+        // روش ۳: دانلود مستقیم HTML صفحه اصلی (اگر Jina کار نکرد)
+        // هوش مصنوعی می‌تواند HTML را بخواند
         if (!articleText) {
-          throw new Error('دانلود خودکار شکست خورد. لطفاً متن را دستی وارد کنید.');
+            try {
+                setProcessLog(`⚠️ تلاش نهایی: دانلود HTML خام...`);
+                const res = await fetch(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(autoUrl)}`);
+                if (res.ok) {
+                    const text = await res.text();
+                    if (text.length > 1000) {
+                        articleText = text; // کل HTML را می‌فرستیم
+                        usedSource = 'Raw HTML';
+                    }
+                }
+            } catch (e) { console.log('Raw HTML fetch failed'); }
+        }
+
+        if (!articleText) {
+          throw new Error('دانلود خودکار شکست خورد. (سایت‌ها مسدود هستند). لطفاً متن مقاله را دستی کپی کنید.');
         }
       }
 
-      setProcessLog('🤖 اتصال به سرور گوگل (VPN روشن باشد)...');
+      setProcessLog(`🤖 ارسال به گوگل (منبع: ${usedSource})...`);
 
-      // ۲. درخواست مستقیم به Gemini API (بدون کتابخانه)
+      // ۲. درخواست مستقیم به Gemini API
       const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
       if(!apiKey) throw new Error('کلید Gemini پیدا نشد.');
 
@@ -129,40 +153,33 @@ export default function AdminPage() {
         JSON Structure:
         {
           "title": "Persian Title",
-          "slug": "english-slug",
+          "slug": "english-slug-unique",
           "summary": "Persian Summary",
           "content": "Markdown Content",
           "category": "Tech/AI/Startup",
           "read_time": "5 min",
-          "cover_url": "Valid Image URL",
+          "cover_url": "Valid Image URL or null",
           "source_url": "${inputType === 'link' ? autoUrl : 'Manual Input'}"
         }
 
-        Article:
-        ${articleText.substring(0, 25000)}
+        Article Content (Parse relevant text from this input, ignore HTML tags if any):
+        ${articleText.substring(0, 40000)}
       `;
 
-      // ارسال درخواست POST مستقیم
-      // مدل gemini-1.5-flash معمولاً پایدارترین نسخه فعلی است
+      // استفاده از مدل gemini-1.5-flash (پایدار و سریع)
       const response = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
         {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            contents: [{
-              parts: [{ text: prompt }]
-            }]
+            contents: [{ parts: [{ text: prompt }] }]
           })
         }
       );
 
       if (!response.ok) {
-        const errData = await response.json();
-        console.error('Gemini Error:', errData);
-        throw new Error(`خطای گوگل (${response.status}): لطفاً VPN خود را چک کنید.`);
+        throw new Error(`خطای هوش مصنوعی (${response.status}). VPN را چک کنید.`);
       }
 
       const aiResult = await response.json();
@@ -177,9 +194,10 @@ export default function AdminPage() {
       try {
         articleData = JSON.parse(cleanJson);
       } catch (e) {
+        // تلاش برای استخراج JSON از متن شلوغ
         const jsonMatch = cleanJson.match(/\{[\s\S]*\}/);
         if (jsonMatch) articleData = JSON.parse(jsonMatch[0]);
-        else throw new Error('فرمت پاسخ صحیح نیست.');
+        else throw new Error('فرمت پاسخ هوش مصنوعی صحیح نیست.');
       }
 
       setProcessLog('💾 ذخیره در دیتابیس...');
@@ -188,14 +206,11 @@ export default function AdminPage() {
       
       const { error } = await supabase.from('articles').insert([{
         ...articleData,
-        slug: finalSlug,
+        slug: finalSlug + '-' + Math.floor(Math.random() * 1000), // جلوگیری از تکراری شدن
         published: true
       }]);
 
-      if (error) {
-         if (error.code === '23505') throw new Error('این مقاله قبلاً ثبت شده است (Slug تکراری).');
-         throw error;
-      }
+      if (error) throw error;
 
       alert('✅ انجام شد!');
       setAutoUrl('');
@@ -297,6 +312,7 @@ export default function AdminPage() {
           </div>
         )}
 
+        {/* بخش مدیریت و درخواست ها */}
         {activeTab === 'manage' && (
           <div className="space-y-4 animate-in fade-in">
              <div className="flex justify-between items-center bg-blue-900/20 border border-blue-500/20 p-4 rounded-xl text-sm">
