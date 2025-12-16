@@ -63,7 +63,7 @@ export default function AdminPage() {
     if (!error) { setAllArticles(allArticles.filter(a => !selectedIds.includes(a.id))); setSelectedIds([]); alert('🗑️ پاک شدند!'); }
   };
 
-  // --- ربات نویسنده (نسخه کلاینت‌ساید با ۳ پروکسی چرخشی) ---
+  // --- ربات نویسنده (نسخه کلاینت‌ساید با پروکسی + رفع باگ مدل) ---
   const [autoUrl, setAutoUrl] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [processLog, setProcessLog] = useState('');
@@ -76,14 +76,13 @@ export default function AdminPage() {
 
     try {
       // ۱. استخراج متن با استراتژی چند پروکسی (Multi-Proxy)
-      // اگر اولی ارور 429 داد، دومی اجرا می‌شود و ...
       const jinaUrl = `https://r.jina.ai/${autoUrl}`;
       let articleText = '';
       
       const proxies = [
-        `https://api.allorigins.win/raw?url=${encodeURIComponent(jinaUrl)}`, // پروکسی ۱: تمیز و سریع
-        `https://corsproxy.io/?${encodeURIComponent(jinaUrl)}`,             // پروکسی ۲: معروف ولی گاهی محدود
-        `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(jinaUrl)}` // پروکسی ۳: پشتیبان قوی
+        `https://api.allorigins.win/raw?url=${encodeURIComponent(jinaUrl)}`,
+        `https://corsproxy.io/?${encodeURIComponent(jinaUrl)}`,
+        `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(jinaUrl)}`
       ];
 
       for (const proxy of proxies) {
@@ -92,11 +91,10 @@ export default function AdminPage() {
           const response = await fetch(proxy);
           if (response.ok) {
             const text = await response.text();
-            // چک می‌کنیم متن واقعی باشد نه صفحه ارور
             if (text.length > 500 && !text.includes('Access Denied') && !text.includes('Too Many Requests')) {
               articleText = text;
               console.log('Downloaded via:', proxy);
-              break; // موفق شدیم، از حلقه خارج شو
+              break;
             }
           }
         } catch (e) {
@@ -105,17 +103,20 @@ export default function AdminPage() {
       }
 
       if (!articleText) {
-        throw new Error('دانلود مقاله شکست خورد. تمامی سرورهای کمکی مشغول هستند. لطفاً ۱ دقیقه دیگر تلاش کنید.');
+        throw new Error('دانلود مقاله شکست خورد. تمامی سرورهای کمکی مشغول هستند.');
       }
 
-      setProcessLog('🤖 ارسال به Gemini (مدل Flash)...');
+      setProcessLog('🤖 ارسال به Gemini (مدل Flash-001)...');
 
       // ۲. هوش مصنوعی
       const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
       if(!apiKey) throw new Error('کلید Gemini پیدا نشد. فایل .env.local را چک کنید');
 
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      
+      // 👇👇👇 تغییر مهم: استفاده از نام دقیق نسخه مدل 👇👇👇
+      // اگر باز هم ارور داد، این خط را به "gemini-pro" تغییر دهید
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash-001" });
 
       const prompt = `
         You are a professional Persian tech editor.
@@ -144,15 +145,12 @@ export default function AdminPage() {
       const aiResult = await model.generateContent(prompt);
       const aiResponse = aiResult.response.text();
       
-      // تمیز کردن JSON
       const cleanJson = aiResponse.replace(/```json/g, '').replace(/```/g, '').trim();
       
       let articleData;
       try {
-        // تلاش اول برای پارس کردن
         articleData = JSON.parse(cleanJson);
       } catch (e) {
-        // تلاش دوم: اگر متن اضافی داشت، فقط براکت‌ها را پیدا کن
         const jsonMatch = cleanJson.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
             articleData = JSON.parse(jsonMatch[0]);
@@ -163,7 +161,6 @@ export default function AdminPage() {
 
       setProcessLog('💾 ذخیره در دیتابیس...');
 
-      // ۳. ذخیره
       const finalSlug = articleData.slug || articleData.title.replace(/\s+/g, '-').toLowerCase();
       
       const { error } = await supabase.from('articles').insert([{
