@@ -3,8 +3,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-// تغییر مهم: Link را به عنوان LinkIcon ایمپورت کردیم تا با لینک نکست تداخل نکند
-import { Lock, FileText, LogOut, Loader2, Save, Trash2, Eye, PenTool, CheckSquare, Square, Type, AlignLeft, Image as ImageIcon, LayoutList, Link as LinkIcon } from 'lucide-react';
+import { Lock, FileText, LogOut, Loader2, Save, Trash2, Eye, PenTool, CheckSquare, Square, Type, AlignLeft, Image as ImageIcon, LayoutList, Link as LinkIcon, Wand2, ArrowDown } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Link from 'next/link';
 
@@ -13,7 +12,11 @@ export default function AdminPage() {
   const [password, setPassword] = useState('');
   const [activeTab, setActiveTab] = useState<'editor' | 'manage'>('editor');
   
-  // --- فرم دستی ---
+  // ورودی متن خام برای هوش مصنوعی
+  const [rawInput, setRawInput] = useState('');
+  const [isAiProcessing, setIsAiProcessing] = useState(false);
+
+  // فرم اصلی
   const [formData, setFormData] = useState({
     title: '',
     slug: '',
@@ -61,13 +64,84 @@ export default function AdminPage() {
     setAllArticles(data || []);
   };
 
-  // --- مدیریت مقالات ---
-  const toggleSelect = (id: string) => { if (selectedIds.includes(id)) setSelectedIds(selectedIds.filter(item => item !== id)); else setSelectedIds([...selectedIds, id]); };
-  const toggleSelectAll = () => { if (selectedIds.length === allArticles.length) setSelectedIds([]); else setSelectedIds(allArticles.map(a => a.id)); };
-  const deleteSelected = async () => {
-    if (!confirm(`حذف ${selectedIds.length} مقاله؟`)) return;
-    const { error } = await supabase.from('articles').delete().in('id', selectedIds);
-    if (!error) { setAllArticles(allArticles.filter(a => !selectedIds.includes(a.id))); setSelectedIds([]); alert('🗑️ پاک شدند!'); }
+  // --- هوش مصنوعی: پر کردن خودکار فرم ---
+  const handleAutoFill = async () => {
+    if (!rawInput.trim()) { alert('لطفاً متن خام (انگلیسی یا فارسی) را در جعبه بالا وارد کنید.'); return; }
+    
+    setIsAiProcessing(true);
+    try {
+        const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+        if(!apiKey) throw new Error('کلید Gemini پیدا نشد.');
+
+        const prompt = `
+            Act as a professional Persian Tech Editor.
+            Task: Convert the Input Text into a structured Persian blog post JSON.
+            
+            Rules:
+            1. Language: Fluent Persian.
+            2. Content format: Markdown.
+            3. Output: JSON Object ONLY.
+
+            JSON Structure:
+            {
+                "title": "Persian Title",
+                "summary": "2-3 lines summary",
+                "content": "# Title\n\nContent in Markdown...",
+                "category": "One of: تکنولوژی, هوش مصنوعی, برنامه‌نویسی, استارتاپ",
+                "read_time": "۵ دقیقه",
+                "cover_url": "",
+                "slug": "english-slug-kebab-case"
+            }
+
+            Input Text:
+            ${rawInput.substring(0, 30000)}
+        `;
+
+        // تلاش اول با مدل Flash
+        let response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+        });
+
+        // اگر ارور داد، تلاش با مدل Pro
+        if (!response.ok) {
+             response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+            });
+        }
+
+        if (!response.ok) throw new Error('خطای اتصال به گوگل (VPN را چک کنید)');
+
+        const result = await response.json();
+        const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!text) throw new Error('پاسخی دریافت نشد.');
+
+        // تمیز کردن JSON
+        const cleanJson = text.replace(/```json/g, '').replace(/```/g, '').trim();
+        const data = JSON.parse(cleanJson);
+
+        // پر کردن فرم با داده‌های هوش مصنوعی
+        setFormData({
+            title: data.title || '',
+            slug: data.slug || '',
+            summary: data.summary || '',
+            content: data.content || '',
+            category: data.category || 'تکنولوژی',
+            read_time: data.read_time || '۵ دقیقه',
+            cover_url: data.cover_url || ''
+        });
+
+        setRawInput(''); // پاک کردن ورودی
+        alert('✨ فرم با موفقیت پر شد! حالا بررسی و ذخیره کنید.');
+
+    } catch (error: any) {
+        alert('❌ خطا در هوش مصنوعی: ' + error.message);
+    } finally {
+        setIsAiProcessing(false);
+    }
   };
 
   // --- ذخیره مقاله ---
@@ -83,25 +157,19 @@ export default function AdminPage() {
         if (!finalSlug) {
             finalSlug = formData.title.replace(/\s+/g, '-').toLowerCase();
         }
-        // افزودن عدد تصادفی برای یکتا بودن
         finalSlug += '-' + Math.floor(Math.random() * 1000);
 
         const { error } = await supabase.from('articles').insert([{
-            title: formData.title,
+            ...formData,
             slug: finalSlug,
-            summary: formData.summary,
-            content: formData.content,
-            category: formData.category,
-            read_time: formData.read_time,
-            cover_url: formData.cover_url || null,
             published: true,
-            source_url: 'Manual Editor'
+            source_url: 'AI Assisted'
         }]);
 
         if (error) throw error;
 
         alert('✅ مقاله با موفقیت ذخیره شد!');
-        
+        // ریست کردن فرم
         setFormData({
             title: '',
             slug: '',
@@ -119,9 +187,19 @@ export default function AdminPage() {
     }
   };
 
+  // هندلر تغییر اینپوت‌ها
   const handleChange = (e: any) => {
       const { name, value } = e.target;
       setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  // مدیریت لیست
+  const toggleSelect = (id: string) => { if (selectedIds.includes(id)) setSelectedIds(selectedIds.filter(item => item !== id)); else setSelectedIds([...selectedIds, id]); };
+  const toggleSelectAll = () => { if (selectedIds.length === allArticles.length) setSelectedIds([]); else setSelectedIds(allArticles.map(a => a.id)); };
+  const deleteSelected = async () => {
+    if (!confirm(`حذف ${selectedIds.length} مقاله؟`)) return;
+    const { error } = await supabase.from('articles').delete().in('id', selectedIds);
+    if (!error) { setAllArticles(allArticles.filter(a => !selectedIds.includes(a.id))); setSelectedIds([]); alert('🗑️ پاک شدند!'); }
   };
 
   if (!isAuthenticated) return (
@@ -151,15 +229,33 @@ export default function AdminPage() {
         </div>
 
         {activeTab === 'editor' && (
-          <div className="animate-in fade-in max-w-4xl mx-auto">
-            <div className="bg-[#111] border border-white/10 p-8 rounded-3xl mb-8 space-y-6">
-              
+          <div className="animate-in fade-in max-w-4xl mx-auto space-y-8">
+            
+            {/* بخش ۱: هوش مصنوعی (پرکننده خودکار) */}
+            <div className="bg-gradient-to-br from-blue-900/10 to-purple-900/10 border border-blue-500/20 p-6 rounded-3xl relative overflow-hidden">
+                <div className="flex items-center gap-2 mb-4 text-blue-300 font-bold"><Wand2 size={20}/> پر کردن خودکار با هوش مصنوعی</div>
+                <textarea 
+                    value={rawInput}
+                    onChange={(e) => setRawInput(e.target.value)}
+                    placeholder="متن مقاله انگلیسی یا خام را اینجا پیست کنید تا هوش مصنوعی فرم پایین را برایتان پر کند..."
+                    className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-sm min-h-[100px] mb-4 focus:outline-none focus:border-blue-500 transition-all"
+                />
+                <button 
+                    onClick={handleAutoFill}
+                    disabled={isAiProcessing}
+                    className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-xl font-bold text-sm flex items-center gap-2 shadow-lg shadow-blue-900/20 disabled:opacity-50"
+                >
+                    {isAiProcessing ? <><Loader2 className="animate-spin" size={16}/> در حال پردازش...</> : <>✨ پردازش و پر کردن فرم <ArrowDown size={16}/></>}
+                </button>
+            </div>
+
+            {/* بخش ۲: فرم اصلی (قابل ویرایش) */}
+            <div className="bg-[#111] border border-white/10 p-8 rounded-3xl space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-2">
                       <label className="text-sm text-gray-400 flex items-center gap-2"><Type size={16}/> عنوان مقاله</label>
-                      <input name="title" value={formData.title} onChange={handleChange} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 focus:border-blue-500 outline-none" placeholder="مثلاً: آینده هوش مصنوعی" />
+                      <input name="title" value={formData.title} onChange={handleChange} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 focus:border-blue-500 outline-none" placeholder="عنوان مقاله..." />
                   </div>
-
                   <div className="space-y-2">
                       <label className="text-sm text-gray-400 flex items-center gap-2"><LayoutList size={16}/> دسته‌بندی</label>
                       <select name="category" value={formData.category} onChange={handleChange} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 focus:border-blue-500 outline-none text-gray-300">
@@ -174,16 +270,13 @@ export default function AdminPage() {
               </div>
 
               <div className="space-y-2">
-                  <label className="text-sm text-gray-400 flex items-center gap-2"><AlignLeft size={16}/> خلاصه کوتاه (۲-۳ خط)</label>
-                  <textarea name="summary" value={formData.summary} onChange={handleChange} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 focus:border-blue-500 outline-none h-24 resize-none" placeholder="خلاصه برای نمایش در لیست..." />
+                  <label className="text-sm text-gray-400 flex items-center gap-2"><AlignLeft size={16}/> خلاصه</label>
+                  <textarea name="summary" value={formData.summary} onChange={handleChange} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 focus:border-blue-500 outline-none h-24 resize-none" placeholder="خلاصه..." />
               </div>
 
               <div className="space-y-2">
-                  <label className="text-sm text-gray-400 flex items-center gap-2"><FileText size={16}/> متن اصلی مقاله (مارک‌داون)</label>
-                  <div className="relative">
-                    <textarea name="content" value={formData.content} onChange={handleChange} className="w-full bg-black/40 border border-white/10 rounded-xl p-4 focus:border-blue-500 outline-none min-h-[400px] font-mono text-sm leading-relaxed" placeholder="# تیتر اصلی&#10;&#10;متن پاراگراف اول...&#10;&#10;## تیتر دوم&#10;- مورد یک" />
-                    <div className="absolute top-2 left-2 text-[10px] text-gray-600 bg-black/50 px-2 py-1 rounded">Markdown Supported</div>
-                  </div>
+                  <label className="text-sm text-gray-400 flex items-center gap-2"><FileText size={16}/> متن اصلی (Markdown)</label>
+                  <textarea name="content" value={formData.content} onChange={handleChange} className="w-full bg-black/40 border border-white/10 rounded-xl p-4 focus:border-blue-500 outline-none min-h-[400px] font-mono text-sm leading-relaxed" placeholder="متن کامل..." />
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -191,11 +284,9 @@ export default function AdminPage() {
                       <label className="text-sm text-gray-400 flex items-center gap-2"><ImageIcon size={16}/> لینک عکس کاور</label>
                       <input name="cover_url" value={formData.cover_url} onChange={handleChange} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 focus:border-blue-500 outline-none dir-ltr text-left" placeholder="https://..." />
                   </div>
-
                   <div className="space-y-2">
-                      {/* اینجا از LinkIcon استفاده شده تا ارور برطرف شود */}
-                      <label className="text-sm text-gray-400 flex items-center gap-2"><LinkIcon size={16} className="rotate-45"/> لینک (Slug) - اختیاری</label>
-                      <input name="slug" value={formData.slug} onChange={handleChange} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 focus:border-blue-500 outline-none dir-ltr text-left" placeholder="my-article-link" />
+                      <label className="text-sm text-gray-400 flex items-center gap-2"><LinkIcon size={16} className="rotate-45"/> اسلاگ (لینک)</label>
+                      <input name="slug" value={formData.slug} onChange={handleChange} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 focus:border-blue-500 outline-none dir-ltr text-left" placeholder="auto-filled-slug" />
                   </div>
               </div>
 
@@ -204,12 +295,13 @@ export default function AdminPage() {
                 disabled={isSaving}
                 className="w-full bg-green-600 hover:bg-green-500 text-white py-4 rounded-2xl font-bold text-lg shadow-lg shadow-green-900/40 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 transition-all"
               >
-                {isSaving ? <><Loader2 className="animate-spin"/> در حال ذخیره...</> : <><Save/> انتشار مقاله</>}
+                {isSaving ? <><Loader2 className="animate-spin"/> در حال ذخیره...</> : <><Save/> انتشار نهایی</>}
               </button>
             </div>
           </div>
         )}
 
+        {/* تب مدیریت (حذف و ...) */}
         {activeTab === 'manage' && (
           <div className="space-y-4 animate-in fade-in">
              <div className="flex justify-between items-center bg-blue-900/20 border border-blue-500/20 p-4 rounded-xl text-sm">
