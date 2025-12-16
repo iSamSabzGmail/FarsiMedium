@@ -92,88 +92,87 @@ export default function AdminPage() {
 
     try {
       let articleText = '';
+      let sourceMethod = 'Manual';
 
       if (inputType === 'text') {
         articleText = manualText;
         setProcessLog('📝 متن دستی دریافت شد...');
       } else {
-        // لینک پایه Jina
         const jinaBaseUrl = `https://r.jina.ai/${autoUrl}`;
-        setProcessLog('🌐 تماس با سرور Jina...');
+        setProcessLog('🌐 تلاش برای دانلود مقاله...');
 
-        // استراتژی ۱: استفاده از کلید Jina + پروکسی (برای عبور از فیلتر)
+        // ---------------------------------------------------------
+        // روش ۱: اتصال مستقیم به Jina (چون VPN دارید، این بهترین روش است)
+        // ---------------------------------------------------------
         if (jinaKey && jinaKey.length > 5) {
-             setProcessLog('🔑 دانلود با کلید Jina (از مسیر امن)...');
+             setProcessLog('🔑 اتصال مستقیم به Jina با کلید...');
              try {
-                 // استفاده از پروکسی corsproxy.io که هدرها را عبور می‌دهد
-                 const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(jinaBaseUrl)}`;
-                 
-                 const res = await fetch(proxyUrl, {
+                 const res = await fetch(jinaBaseUrl, {
+                     method: 'GET',
                      headers: {
                          'Authorization': `Bearer ${jinaKey}`,
                          'X-Return-Format': 'markdown',
-                         'Accept': 'application/json'
+                         'Accept': 'application/json' // درخواست JSON برای دور زدن برخی مشکلات متن
                      }
                  });
                  
                  if(res.ok) {
                      const contentType = res.headers.get("content-type");
-                     if (contentType && contentType.includes("json")) {
+                     if (contentType && contentType.includes("application/json")) {
                         const data = await res.json();
                         articleText = data.data?.content || data.text || JSON.stringify(data);
                      } else {
                         articleText = await res.text();
                      }
-                     console.log("Downloaded via Jina Key + Proxy");
+                     sourceMethod = 'Jina Direct';
+                 } else {
+                     console.warn("Jina Direct Failed Status:", res.status);
                  }
-             } catch(e) { console.warn('Jina Key method failed:', e); }
-             
-             // اگر پروکسی بالا جواب نداد، تلاش مستقیم (شاید کاربر VPN دارد)
-             if (!articleText) {
-                 try {
-                     const res = await fetch(jinaBaseUrl, {
-                        headers: {
-                            'Authorization': `Bearer ${jinaKey}`,
-                            'X-Return-Format': 'markdown'
-                        }
-                     });
-                     if(res.ok) articleText = await res.text();
-                 } catch(e) {}
-             }
+             } catch(e) { console.warn('Jina Direct Error:', e); }
         }
 
-        // استراتژی ۲: بدون کلید (AllOrigins - JSON)
+        // ---------------------------------------------------------
+        // روش ۲: دانلود HTML خام با AllOrigins (اگر Jina کار نکرد)
+        // این روش ربات‌های ضد اسکرپ را دور می‌زند چون JSON برمی‌گرداند
+        // ---------------------------------------------------------
         if (!articleText) {
-             setProcessLog('🔄 تلاش با سرور کمکی ۱ (بدون کلید)...');
+             setProcessLog('🌍 دانلود HTML خام (AllOrigins)...');
              try {
-                 const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(jinaBaseUrl)}`);
+                 // درخواست خودِ سایت مدیوم (نه Jina)
+                 const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(autoUrl)}`);
                  if (res.ok) {
                     const data = await res.json();
-                    if (data.contents && data.contents.length > 500 && !data.contents.includes('Access Denied')) {
-                        articleText = data.contents;
+                    if (data.contents && data.contents.length > 1000) {
+                        articleText = data.contents; // کل HTML صفحه
+                        sourceMethod = 'Raw HTML via AllOrigins';
                     }
                  }
              } catch (e) { console.log('AllOrigins failed'); }
         }
 
-        // استراتژی ۳: CodeTabs
+        // ---------------------------------------------------------
+        // روش ۳: دانلود HTML خام با CodeTabs
+        // ---------------------------------------------------------
         if (!articleText) {
-            setProcessLog('🔄 تلاش با سرور کمکی ۲...');
+            setProcessLog('🌍 دانلود HTML خام (CodeTabs)...');
             try {
-                const res = await fetch(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(jinaBaseUrl)}`);
+                const res = await fetch(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(autoUrl)}`);
                 if (res.ok) {
                     const text = await res.text();
-                    if (text.length > 500 && !text.includes('Access Denied')) articleText = text;
+                    if (text.length > 1000) {
+                        articleText = text;
+                        sourceMethod = 'Raw HTML via CodeTabs';
+                    }
                 }
             } catch (e) {}
         }
 
-        if (!articleText || articleText.includes('Access Denied') || articleText.length < 200) {
-          throw new Error('دانلود مقاله شکست خورد. اگر VPN دارید روشن کنید، در غیر این صورت متن مقاله را دستی کپی کنید.');
+        if (!articleText || articleText.length < 500) {
+          throw new Error('دانلود مقاله با تمام روش‌ها شکست خورد. لطفاً متن مقاله را دستی کپی کنید.');
         }
       }
 
-      setProcessLog('🤖 ارسال به Gemini...');
+      setProcessLog(`🤖 ارسال به Gemini (منبع: ${sourceMethod})...`);
 
       const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
       if(!apiKey) throw new Error('کلید Gemini پیدا نشد.');
@@ -183,6 +182,8 @@ export default function AdminPage() {
         Task: Rewrite this article for a Persian blog.
         Rules: Fluent Persian, Markdown format, JSON Output ONLY.
         
+        IMPORTANT: The Input might be Raw HTML. Ignore HTML tags, ads, and scripts. Extract the main article content.
+
         JSON Structure:
         {
           "title": "Persian Title",
@@ -195,8 +196,8 @@ export default function AdminPage() {
           "source_url": "${inputType === 'link' ? autoUrl : 'Manual Input'}"
         }
 
-        Input Text:
-        ${articleText.substring(0, 35000)}
+        Input Data:
+        ${articleText.substring(0, 45000)}
       `;
 
       const response = await fetch(
