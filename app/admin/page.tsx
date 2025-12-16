@@ -23,19 +23,14 @@ export default function AdminPage() {
 
   // --- احراز هویت و لود کردن کلید ---
   useEffect(() => {
-    // 1. چک کردن لاگین
     const isLoggedIn = localStorage.getItem('medium_admin_auth');
     if (isLoggedIn === 'true') setIsAuthenticated(true);
     
-    // 2. تلاش برای پیدا کردن کلید Jina (اولویت با متغیر محیطی، بعد لوکال استوریج)
     const envKey = process.env.NEXT_PUBLIC_JINA_API_KEY;
     const localKey = localStorage.getItem('jina_api_key');
     
-    if (envKey) {
-        setJinaKey(envKey);
-    } else if (localKey) {
-        setJinaKey(localKey);
-    }
+    if (envKey) setJinaKey(envKey);
+    else if (localKey) setJinaKey(localKey);
   }, []);
 
   const checkPassword = () => {
@@ -83,7 +78,7 @@ export default function AdminPage() {
     if (!error) { setAllArticles(allArticles.filter(a => !selectedIds.includes(a.id))); setSelectedIds([]); alert('🗑️ پاک شدند!'); }
   };
 
-  // --- ربات نویسنده (Jina Key Integration) ---
+  // --- ربات نویسنده ---
   const [autoUrl, setAutoUrl] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [processLog, setProcessLog] = useState('');
@@ -102,14 +97,18 @@ export default function AdminPage() {
         articleText = manualText;
         setProcessLog('📝 متن دستی دریافت شد...');
       } else {
-        const targetUrl = `https://r.jina.ai/${autoUrl}`;
+        // لینک پایه Jina
+        const jinaBaseUrl = `https://r.jina.ai/${autoUrl}`;
         setProcessLog('🌐 تماس با سرور Jina...');
 
-        // استراتژی ۱: استفاده از کلید Jina (مستقیم و قدرتمند)
+        // استراتژی ۱: استفاده از کلید Jina + پروکسی (برای عبور از فیلتر)
         if (jinaKey && jinaKey.length > 5) {
-             setProcessLog('🔑 دانلود با اکانت پرمیوم Jina...');
+             setProcessLog('🔑 دانلود با کلید Jina (از مسیر امن)...');
              try {
-                 const res = await fetch(targetUrl, {
+                 // استفاده از پروکسی corsproxy.io که هدرها را عبور می‌دهد
+                 const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(jinaBaseUrl)}`;
+                 
+                 const res = await fetch(proxyUrl, {
                      headers: {
                          'Authorization': `Bearer ${jinaKey}`,
                          'X-Return-Format': 'markdown',
@@ -118,46 +117,59 @@ export default function AdminPage() {
                  });
                  
                  if(res.ok) {
-                     // Jina با کلید معمولا JSON برمیگرداند یا Text
                      const contentType = res.headers.get("content-type");
-                     if (contentType && contentType.indexOf("application/json") !== -1) {
+                     if (contentType && contentType.includes("json")) {
                         const data = await res.json();
                         articleText = data.data?.content || data.text || JSON.stringify(data);
                      } else {
                         articleText = await res.text();
                      }
-                     console.log("Downloaded via Jina Key");
-                 } else {
-                     console.warn("Jina Direct Failed:", res.status);
+                     console.log("Downloaded via Jina Key + Proxy");
                  }
              } catch(e) { console.warn('Jina Key method failed:', e); }
+             
+             // اگر پروکسی بالا جواب نداد، تلاش مستقیم (شاید کاربر VPN دارد)
+             if (!articleText) {
+                 try {
+                     const res = await fetch(jinaBaseUrl, {
+                        headers: {
+                            'Authorization': `Bearer ${jinaKey}`,
+                            'X-Return-Format': 'markdown'
+                        }
+                     });
+                     if(res.ok) articleText = await res.text();
+                 } catch(e) {}
+             }
         }
 
-        // استراتژی ۲: اگر کلید نبود یا کار نکرد (پروکسی CodeTabs)
+        // استراتژی ۲: بدون کلید (AllOrigins - JSON)
         if (!articleText) {
-             setProcessLog('🔄 تلاش با سرور کمکی (بدون کلید)...');
+             setProcessLog('🔄 تلاش با سرور کمکی ۱ (بدون کلید)...');
              try {
-                 const res = await fetch(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`);
+                 const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(jinaBaseUrl)}`);
                  if (res.ok) {
-                     const text = await res.text();
-                     if (text.length > 500 && !text.includes('Access Denied')) articleText = text;
+                    const data = await res.json();
+                    if (data.contents && data.contents.length > 500 && !data.contents.includes('Access Denied')) {
+                        articleText = data.contents;
+                    }
                  }
-             } catch (e) { console.log('CodeTabs failed'); }
+             } catch (e) { console.log('AllOrigins failed'); }
         }
 
-        // استراتژی ۳: AllOrigins
+        // استراتژی ۳: CodeTabs
         if (!articleText) {
+            setProcessLog('🔄 تلاش با سرور کمکی ۲...');
             try {
-                const res = await fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`);
+                const res = await fetch(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(jinaBaseUrl)}`);
                 if (res.ok) {
                     const text = await res.text();
-                    if (text.length > 500) articleText = text;
+                    if (text.length > 500 && !text.includes('Access Denied')) articleText = text;
                 }
             } catch (e) {}
         }
 
-        if (!articleText || articleText.includes('Access Denied')) {
-          throw new Error('دانلود مقاله شکست خورد. اگر کلید Jina وارد کرده‌اید، مطمئن شوید درست است. در غیر این صورت متن را دستی وارد کنید.');
+        if (!articleText || articleText.includes('Access Denied') || articleText.length < 200) {
+          throw new Error('دانلود مقاله شکست خورد. اگر VPN دارید روشن کنید، در غیر این صورت متن مقاله را دستی کپی کنید.');
         }
       }
 
@@ -290,12 +302,12 @@ export default function AdminPage() {
                     <button onClick={() => setInputType('text')} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${inputType === 'text' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}><FileType size={16}/> متن دستی</button>
                  </div>
                  
-                 {/* ورودی کلید Jina - اگر در env باشد خودکار پر میشود */}
+                 {/* ورودی کلید Jina */}
                  {inputType === 'link' && (
                      <div className="flex-1 min-w-[200px] relative">
                         <input 
                             type="text" 
-                            placeholder="کلید Jina (اگر در تنظیمات نباشد، اینجا وارد کنید)" 
+                            placeholder="کلید Jina (خودکار از تنظیمات پر می‌شود)" 
                             className="w-full bg-black/40 border border-white/10 rounded-xl py-2 pl-10 pr-4 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
                             value={jinaKey}
                             onChange={(e) => saveJinaKey(e.target.value)}
