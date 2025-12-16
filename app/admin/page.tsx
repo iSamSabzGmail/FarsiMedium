@@ -3,8 +3,8 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import { ArrowLeft, Lock, Wand2, Users, FileText, LogOut, Square, CheckSquare, Loader2, Link as LinkIcon, Check, Layers, Trash2, Eye, FileType } from 'lucide-react';
+// کتابخانه گوگل حذف شد تا از درخواست مستقیم استفاده کنیم
+import { ArrowLeft, Lock, Wand2, Users, FileText, LogOut, Square, CheckSquare, Loader2, Link as LinkIcon, Layers, Trash2, Eye, FileType } from 'lucide-react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 
@@ -13,7 +13,6 @@ export default function AdminPage() {
   const [password, setPassword] = useState('');
   const [activeTab, setActiveTab] = useState<'create' | 'requests' | 'manage'>('create');
   
-  // حالت ورودی: لینک یا متن دستی
   const [inputType, setInputType] = useState<'link' | 'text'>('link');
   const [manualText, setManualText] = useState('');
 
@@ -58,7 +57,6 @@ export default function AdminPage() {
     setAllArticles(data || []);
   };
 
-  // --- لاجیک انتخاب و حذف ---
   const toggleSelect = (id: string) => { if (selectedIds.includes(id)) setSelectedIds(selectedIds.filter(item => item !== id)); else setSelectedIds([...selectedIds, id]); };
   const toggleSelectAll = () => { if (selectedIds.length === allArticles.length) setSelectedIds([]); else setSelectedIds(allArticles.map(a => a.id)); };
   const deleteSelected = async () => {
@@ -67,7 +65,7 @@ export default function AdminPage() {
     if (!error) { setAllArticles(allArticles.filter(a => !selectedIds.includes(a.id))); setSelectedIds([]); alert('🗑️ پاک شدند!'); }
   };
 
-  // --- ربات نویسنده ---
+  // --- ربات نویسنده (درخواست مستقیم REST) ---
   const [autoUrl, setAutoUrl] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [processLog, setProcessLog] = useState('');
@@ -82,18 +80,16 @@ export default function AdminPage() {
     try {
       let articleText = '';
 
-      // ۱. مرحله دریافت متن
+      // ۱. دریافت متن (پروکسی یا دستی)
       if (inputType === 'text') {
-        // حالت دستی: متن از ورودی گرفته می‌شود
         articleText = manualText;
         setProcessLog('📝 متن دریافت شد...');
       } else {
-        // حالت لینک: تلاش با پروکسی‌ها
         const jinaUrl = `https://r.jina.ai/${autoUrl}`;
         
-        // استراتژی ۱: AllOrigins (خروجی JSON دارد)
+        // استراتژی پروکسی AllOrigins
         try {
-            setProcessLog(`🔄 تلاش با سرور ۱...`);
+            setProcessLog(`🔄 دانلود مقاله...`);
             const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(jinaUrl)}`);
             if (res.ok) {
                 const data = await res.json();
@@ -101,12 +97,11 @@ export default function AdminPage() {
                     articleText = data.contents;
                 }
             }
-        } catch (e) { console.log('Proxy 1 failed'); }
+        } catch (e) { console.log('Proxy failed'); }
 
-        // استراتژی ۲: CorsProxy (اگر اولی نشد)
         if (!articleText) {
-            try {
-                setProcessLog(`🔄 تلاش با سرور ۲...`);
+            // تلاش دوم با CorsProxy
+             try {
                 const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(jinaUrl)}`);
                 if (res.ok) {
                     const text = await res.text();
@@ -116,60 +111,75 @@ export default function AdminPage() {
         }
 
         if (!articleText) {
-          throw new Error('دانلود خودکار انجام نشد. لطفاً گزینه "ورود دستی متن" را انتخاب کنید و متن مقاله را کپی کنید.');
+          throw new Error('دانلود خودکار شکست خورد. لطفاً متن را دستی وارد کنید.');
         }
       }
 
-      setProcessLog('🤖 ارسال به Gemini (مدل Pro)...');
+      setProcessLog('🤖 اتصال به سرور گوگل (VPN روشن باشد)...');
 
-      // ۲. هوش مصنوعی (مدل Stable)
+      // ۲. درخواست مستقیم به Gemini API (بدون کتابخانه)
       const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-      if(!apiKey) throw new Error('کلید Gemini پیدا نشد. فایل .env.local را چک کنید');
-
-      const genAI = new GoogleGenerativeAI(apiKey);
-      // تغییر مدل به gemini-pro برای جلوگیری از خطای 404
-      const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+      if(!apiKey) throw new Error('کلید Gemini پیدا نشد.');
 
       const prompt = `
         You are a professional Persian tech editor.
         Task: Rewrite this article for a Persian blog.
+        Rules: Fluent Persian, Markdown format, JSON Output ONLY.
         
-        Rules:
-        1. Language: Fluent, modern Persian (Farsi). NO Google Translate style.
-        2. Tone: Educational and engaging.
-        3. Structure: Use Markdown (# Title, ## Subtitle, - List).
-        4. Output: ONLY a valid JSON object. Do not add markdown code blocks around the JSON.
+        JSON Structure:
+        {
+          "title": "Persian Title",
+          "slug": "english-slug",
+          "summary": "Persian Summary",
+          "content": "Markdown Content",
+          "category": "Tech/AI/Startup",
+          "read_time": "5 min",
+          "cover_url": "Valid Image URL",
+          "source_url": "${inputType === 'link' ? autoUrl : 'Manual Input'}"
+        }
 
-        JSON Fields:
-        - title: Catchy Persian title.
-        - slug: English slug (kebab-case, unique).
-        - summary: 2-3 lines Persian summary.
-        - content: The rewritten article body in Markdown.
-        - category: One of [تکنولوژی, توسعه فردی, هوش مصنوعی, استارتاپ, برنامه‌نویسی].
-        - read_time: e.g. "۵ دقیقه".
-        - cover_url: Find a relevant Unsplash image URL based on topic.
-        - source_url: "${inputType === 'link' ? autoUrl : 'Manual Input'}".
-        
-        Article Content:
+        Article:
         ${articleText.substring(0, 25000)}
       `;
 
-      const aiResult = await model.generateContent(prompt);
-      const aiResponse = aiResult.response.text();
-      
-      const cleanJson = aiResponse.replace(/```json/g, '').replace(/```/g, '').trim();
+      // ارسال درخواست POST مستقیم
+      // مدل gemini-1.5-flash معمولاً پایدارترین نسخه فعلی است
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            contents: [{
+              parts: [{ text: prompt }]
+            }]
+          })
+        }
+      );
+
+      if (!response.ok) {
+        const errData = await response.json();
+        console.error('Gemini Error:', errData);
+        throw new Error(`خطای گوگل (${response.status}): لطفاً VPN خود را چک کنید.`);
+      }
+
+      const aiResult = await response.json();
+      const aiResponseText = aiResult.candidates?.[0]?.content?.parts?.[0]?.text;
+
+      if (!aiResponseText) throw new Error('پاسخ خالی از هوش مصنوعی دریافت شد.');
+
+      // ۳. پردازش JSON
+      const cleanJson = aiResponseText.replace(/```json/g, '').replace(/```/g, '').trim();
       
       let articleData;
       try {
         articleData = JSON.parse(cleanJson);
       } catch (e) {
-        // تلاش برای تعمیر JSON
         const jsonMatch = cleanJson.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-            articleData = JSON.parse(jsonMatch[0]);
-        } else {
-            throw new Error('هوش مصنوعی پاسخ نامعتبر داد (مشکل JSON).');
-        }
+        if (jsonMatch) articleData = JSON.parse(jsonMatch[0]);
+        else throw new Error('فرمت پاسخ صحیح نیست.');
       }
 
       setProcessLog('💾 ذخیره در دیتابیس...');
@@ -187,7 +197,7 @@ export default function AdminPage() {
          throw error;
       }
 
-      alert('✅ مقاله با موفقیت ترجمه و منتشر شد!');
+      alert('✅ انجام شد!');
       setAutoUrl('');
       setManualText('');
       setProcessLog('');
@@ -243,7 +253,6 @@ export default function AdminPage() {
                 </div>
               </div>
 
-              {/* تب انتخاب روش ورودی */}
               <div className="flex gap-2 mb-4 bg-black/40 p-1 rounded-xl w-fit">
                 <button onClick={() => setInputType('link')} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${inputType === 'link' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}><LinkIcon size={16}/> لینک</button>
                 <button onClick={() => setInputType('text')} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${inputType === 'text' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}><FileType size={16}/> متن دستی</button>
@@ -288,7 +297,6 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* بخش مدیریت و درخواست ها مثل قبل بدون تغییر */}
         {activeTab === 'manage' && (
           <div className="space-y-4 animate-in fade-in">
              <div className="flex justify-between items-center bg-blue-900/20 border border-blue-500/20 p-4 rounded-xl text-sm">
