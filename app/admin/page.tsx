@@ -4,7 +4,7 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { ArrowLeft, Lock, Wand2, Users, FileText, LogOut, Square, CheckSquare, Loader2, Link as LinkIcon, Check, Layers, Trash2, Eye, Edit3 } from 'lucide-react';
+import { ArrowLeft, Lock, Wand2, Users, FileText, LogOut, Square, CheckSquare, Loader2, Link as LinkIcon, Check, Layers, Trash2, Eye, FileType } from 'lucide-react';
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 
@@ -13,10 +13,15 @@ export default function AdminPage() {
   const [password, setPassword] = useState('');
   const [activeTab, setActiveTab] = useState<'create' | 'requests' | 'manage'>('create');
   
+  // حالت ورودی: لینک یا متن دستی
+  const [inputType, setInputType] = useState<'link' | 'text'>('link');
+  const [manualText, setManualText] = useState('');
+
   const [requests, setRequests] = useState<any[]>([]);
   const [allArticles, setAllArticles] = useState<any[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
+  // --- احراز هویت ---
   useEffect(() => {
     const isLoggedIn = localStorage.getItem('medium_admin_auth');
     if (isLoggedIn === 'true') setIsAuthenticated(true);
@@ -26,7 +31,9 @@ export default function AdminPage() {
     if (password === 'sam123') {
       setIsAuthenticated(true);
       localStorage.setItem('medium_admin_auth', 'true');
-    } else { alert('رمز اشتباه است!'); }
+    } else {
+      alert('رمز اشتباه است!');
+    }
   };
 
   const handleLogout = () => {
@@ -35,12 +42,15 @@ export default function AdminPage() {
     setPassword('');
   };
 
+  // --- دریافت داده‌ها ---
   useEffect(() => {
     if (!isAuthenticated) return;
     if (activeTab === 'requests') {
       supabase.from('requests').select('*').eq('status', 'pending').order('created_at', { ascending: false }).then(({ data }) => setRequests(data || []));
     }
-    if (activeTab === 'manage') fetchArticles();
+    if (activeTab === 'manage') {
+      fetchArticles();
+    }
   }, [isAuthenticated, activeTab]);
 
   const fetchArticles = async () => {
@@ -48,6 +58,7 @@ export default function AdminPage() {
     setAllArticles(data || []);
   };
 
+  // --- لاجیک انتخاب و حذف ---
   const toggleSelect = (id: string) => { if (selectedIds.includes(id)) setSelectedIds(selectedIds.filter(item => item !== id)); else setSelectedIds([...selectedIds, id]); };
   const toggleSelectAll = () => { if (selectedIds.length === allArticles.length) setSelectedIds([]); else setSelectedIds(allArticles.map(a => a.id)); };
   const deleteSelected = async () => {
@@ -56,81 +67,114 @@ export default function AdminPage() {
     if (!error) { setAllArticles(allArticles.filter(a => !selectedIds.includes(a.id))); setSelectedIds([]); alert('🗑️ پاک شدند!'); }
   };
 
-  // --- ربات نویسنده هوشمند ---
+  // --- ربات نویسنده ---
   const [autoUrl, setAutoUrl] = useState('');
-  const [manualText, setManualText] = useState('');
-  const [isManual, setIsManual] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processLog, setProcessLog] = useState('');
 
   const handleAutoProcess = async () => {
-    if (!isManual && !autoUrl.length) { alert('لینک را وارد کنید'); return; }
-    if (isManual && !manualText.length) { alert('متن مقاله را پیست کنید'); return; }
+    if (inputType === 'link' && !autoUrl.length) { alert('لینک را وارد کنید'); return; }
+    if (inputType === 'text' && manualText.length < 50) { alert('متن مقاله خیلی کوتاه است'); return; }
     
     setIsProcessing(true);
-    let articleText = manualText;
+    setProcessLog('⏳ شروع عملیات...');
 
     try {
-      // ۱. مرحله استخراج (فقط اگر حالت خودکار باشد)
-      if (!isManual) {
-        setProcessLog('⏳ در حال استخراج محتوا از Medium...');
+      let articleText = '';
+
+      // ۱. مرحله دریافت متن
+      if (inputType === 'text') {
+        // حالت دستی: متن از ورودی گرفته می‌شود
+        articleText = manualText;
+        setProcessLog('📝 متن دریافت شد...');
+      } else {
+        // حالت لینک: تلاش با پروکسی‌ها
         const jinaUrl = `https://r.jina.ai/${autoUrl}`;
-        const jinaKey = process.env.NEXT_PUBLIC_JINA_API_KEY;
-
-        // استفاده از پروکسی AllOrigins برای دور زدن CORS در گیت‌هاب پیجز
-        const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(jinaUrl)}`;
         
-        const response = await fetch(proxyUrl, {
-            headers: jinaKey ? { 'Authorization': `Bearer ${jinaKey}` } : {}
-        });
+        // استراتژی ۱: AllOrigins (خروجی JSON دارد)
+        try {
+            setProcessLog(`🔄 تلاش با سرور ۱...`);
+            const res = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(jinaUrl)}`);
+            if (res.ok) {
+                const data = await res.json();
+                if (data.contents && data.contents.length > 500) {
+                    articleText = data.contents;
+                }
+            }
+        } catch (e) { console.log('Proxy 1 failed'); }
 
-        if (!response.ok) throw new Error('سرویس استخراج پاسخ نداد. متن را به صورت دستی پیست کنید.');
-        
-        articleText = await response.text();
-        if (articleText.length < 300) throw new Error('محتوای استخراج شده ناقص است. متن را دستی کپی کنید.');
+        // استراتژی ۲: CorsProxy (اگر اولی نشد)
+        if (!articleText) {
+            try {
+                setProcessLog(`🔄 تلاش با سرور ۲...`);
+                const res = await fetch(`https://corsproxy.io/?${encodeURIComponent(jinaUrl)}`);
+                if (res.ok) {
+                    const text = await res.text();
+                    if (text.length > 500) articleText = text;
+                }
+            } catch (e) { console.log('Proxy 2 failed'); }
+        }
+
+        if (!articleText) {
+          throw new Error('دانلود خودکار انجام نشد. لطفاً گزینه "ورود دستی متن" را انتخاب کنید و متن مقاله را کپی کنید.');
+        }
       }
 
-      // ۲. مرحله ترجمه و پردازش با هوش مصنوعی
-      setProcessLog('🤖 در حال ترجمه و بازنویسی با Gemini...');
+      setProcessLog('🤖 ارسال به Gemini (مدل Pro)...');
+
+      // ۲. هوش مصنوعی (مدل Stable)
       const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-      if(!apiKey) throw new Error('کلید Gemini (در تنظیمات) یافت نشد.');
+      if(!apiKey) throw new Error('کلید Gemini پیدا نشد. فایل .env.local را چک کنید');
 
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      // تغییر مدل به gemini-pro برای جلوگیری از خطای 404
+      const model = genAI.getGenerativeModel({ model: "gemini-pro" });
 
       const prompt = `
-        You are a Persian tech blogger. Rewrite this article into a high-quality Persian post.
-        - Language: Fluent Persian (Modern).
-        - Format: Markdown (use # and ##).
-        - Output: ONLY a valid JSON object.
+        You are a professional Persian tech editor.
+        Task: Rewrite this article for a Persian blog.
         
-        JSON Fields:
-        - title: Persian title.
-        - slug: English kebab-case slug.
-        - summary: 2-3 lines summary.
-        - content: Full article body in Markdown.
-        - category: One of [تکنولوژی, هوش مصنوعی, برنامه‌نویسی, استارتاپ].
-        - read_time: e.g. "۷ دقیقه".
-        - cover_url: A high-quality Unsplash image URL related to the topic.
-        - source_url: "${autoUrl || 'Manual'}"
+        Rules:
+        1. Language: Fluent, modern Persian (Farsi). NO Google Translate style.
+        2. Tone: Educational and engaging.
+        3. Structure: Use Markdown (# Title, ## Subtitle, - List).
+        4. Output: ONLY a valid JSON object. Do not add markdown code blocks around the JSON.
 
+        JSON Fields:
+        - title: Catchy Persian title.
+        - slug: English slug (kebab-case, unique).
+        - summary: 2-3 lines Persian summary.
+        - content: The rewritten article body in Markdown.
+        - category: One of [تکنولوژی, توسعه فردی, هوش مصنوعی, استارتاپ, برنامه‌نویسی].
+        - read_time: e.g. "۵ دقیقه".
+        - cover_url: Find a relevant Unsplash image URL based on topic.
+        - source_url: "${inputType === 'link' ? autoUrl : 'Manual Input'}".
+        
         Article Content:
         ${articleText.substring(0, 25000)}
       `;
 
       const aiResult = await model.generateContent(prompt);
       const aiResponse = aiResult.response.text();
+      
       const cleanJson = aiResponse.replace(/```json/g, '').replace(/```/g, '').trim();
       
       let articleData;
       try {
+        articleData = JSON.parse(cleanJson);
+      } catch (e) {
+        // تلاش برای تعمیر JSON
         const jsonMatch = cleanJson.match(/\{[\s\S]*\}/);
-        articleData = JSON.parse(jsonMatch ? jsonMatch[0] : cleanJson);
-      } catch (e) { throw new Error('خطا در تحلیل پاسخ هوش مصنوعی.'); }
+        if (jsonMatch) {
+            articleData = JSON.parse(jsonMatch[0]);
+        } else {
+            throw new Error('هوش مصنوعی پاسخ نامعتبر داد (مشکل JSON).');
+        }
+      }
 
-      // ۳. ذخیره در دیتابیس
-      setProcessLog('💾 در حال انتشار مقاله...');
-      const finalSlug = articleData.slug || `post-${Date.now()}`;
+      setProcessLog('💾 ذخیره در دیتابیس...');
+
+      const finalSlug = articleData.slug || articleData.title.replace(/\s+/g, '-').toLowerCase();
       
       const { error } = await supabase.from('articles').insert([{
         ...articleData,
@@ -138,25 +182,26 @@ export default function AdminPage() {
         published: true
       }]);
 
-      if (error) throw error;
+      if (error) {
+         if (error.code === '23505') throw new Error('این مقاله قبلاً ثبت شده است (Slug تکراری).');
+         throw error;
+      }
 
-      alert('✅ مقاله با موفقیت منتشر شد!');
+      alert('✅ مقاله با موفقیت ترجمه و منتشر شد!');
       setAutoUrl('');
       setManualText('');
+      setProcessLog('');
       
     } catch (error: any) {
       console.error(error);
-      alert('❌ خطا: ' + (error.message || 'مشکل در فرآیند'));
+      alert('❌ خطا: ' + (error.message || 'مشکل در ارتباط'));
+      setProcessLog('');
     } finally {
       setIsProcessing(false);
-      setProcessLog('');
     }
   };
 
-  const markAsDone = async (id: string) => { 
-    await supabase.from('requests').update({ status: 'done' }).eq('id', id); 
-    setRequests(requests.filter(r => r.id !== id)); 
-  };
+  const markAsDone = async (id: string) => { await supabase.from('requests').update({ status: 'done' }).eq('id', id); setRequests(requests.filter(r => r.id !== id)); };
 
   if (!isAuthenticated) return (
     <div className="min-h-screen flex items-center justify-center p-4 font-vazir" dir="rtl">
@@ -180,70 +225,93 @@ export default function AdminPage() {
         </div>
 
         <div className="flex flex-wrap gap-4 mb-8 bg-[#111]/80 backdrop-blur-md p-2 rounded-2xl border border-white/10 sticky top-24 z-40 shadow-xl">
-            <button onClick={() => setActiveTab('create')} className={`flex-1 px-4 py-3 rounded-xl font-bold transition-all text-sm flex items-center justify-center gap-2 ${activeTab === 'create' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-white/5'}`}><Layers size={18}/> ربات نویسنده</button>
-            <button onClick={() => setActiveTab('manage')} className={`flex-1 px-4 py-3 rounded-xl font-bold transition-all text-sm flex items-center justify-center gap-2 ${activeTab === 'manage' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-white/5'}`}><FileText size={18}/> مقالات</button>
-            <button onClick={() => setActiveTab('requests')} className={`flex-1 px-4 py-3 rounded-xl font-bold transition-all text-sm flex items-center justify-center gap-2 ${activeTab === 'requests' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:bg-white/5'}`}><Users size={18}/> درخواست‌ها</button>
+            <button onClick={() => setActiveTab('create')} className={`flex-1 px-4 py-3 rounded-xl font-bold transition-all text-sm flex items-center justify-center gap-2 ${activeTab === 'create' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}><Layers size={18}/> ربات نویسنده</button>
+            <button onClick={() => setActiveTab('manage')} className={`flex-1 px-4 py-3 rounded-xl font-bold transition-all text-sm flex items-center justify-center gap-2 ${activeTab === 'manage' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}><FileText size={18}/> مدیریت مقالات</button>
+            <button onClick={() => setActiveTab('requests')} className={`flex-1 px-4 py-3 rounded-xl font-bold transition-all text-sm flex items-center justify-center gap-2 ${activeTab === 'requests' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}><Users size={18}/> درخواست‌ها {requests.length > 0 && <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full">{requests.length}</span>}</button>
         </div>
 
         {activeTab === 'create' && (
           <div className="animate-in fade-in max-w-2xl mx-auto">
-            <div className="bg-[#111] border border-white/10 p-8 rounded-3xl shadow-2xl relative overflow-hidden">
-              <div className="flex justify-center gap-4 mb-8">
-                <button onClick={() => setIsManual(false)} className={`px-6 py-2 rounded-full text-sm font-bold transition-all ${!isManual ? 'bg-blue-600 text-white' : 'bg-white/5 text-gray-500'}`}>لینک مدیوم (خودکار)</button>
-                <button onClick={() => setIsManual(true)} className={`px-6 py-2 rounded-full text-sm font-bold transition-all ${isManual ? 'bg-blue-600 text-white' : 'bg-white/5 text-gray-500'}`}>کپی متن (دستی)</button>
+            <div className="bg-gradient-to-br from-blue-900/20 to-purple-900/20 border border-blue-500/30 p-8 rounded-3xl mb-8 shadow-2xl relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/20 blur-[60px] -z-10"></div>
+              
+              <div className="flex items-center gap-3 mb-6 text-blue-300">
+                <div className="p-3 bg-blue-500/20 rounded-xl"><Wand2 size={28} /></div>
+                <div>
+                  <h3 className="font-bold text-xl text-white">تولید محتوای خودکار</h3>
+                  <p className="text-sm text-gray-400">لینک یا متن مقاله را وارد کنید</p>
+                </div>
               </div>
 
-              {!isManual ? (
-                <div className="space-y-4">
-                  <div className="relative">
-                    <input type="url" placeholder="https://medium.com/..." className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 pr-12 pl-4 text-white text-left dir-ltr focus:border-blue-500 outline-none" value={autoUrl} onChange={(e) => setAutoUrl(e.target.value)} disabled={isProcessing} />
-                    <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500"><LinkIcon size={20}/></div>
-                  </div>
-                </div>
-              ) : (
-                <textarea placeholder="متن انگلیسی مقاله را اینجا پیست کنید..." className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-white min-h-[200px] focus:border-blue-500 outline-none mb-4" value={manualText} onChange={(e) => setManualText(e.target.value)} disabled={isProcessing}></textarea>
-              )}
+              {/* تب انتخاب روش ورودی */}
+              <div className="flex gap-2 mb-4 bg-black/40 p-1 rounded-xl w-fit">
+                <button onClick={() => setInputType('link')} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${inputType === 'link' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}><LinkIcon size={16}/> لینک</button>
+                <button onClick={() => setInputType('text')} className={`px-4 py-2 rounded-lg text-sm font-bold flex items-center gap-2 transition-all ${inputType === 'text' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white'}`}><FileType size={16}/> متن دستی</button>
+              </div>
 
-              <button onClick={handleAutoProcess} disabled={isProcessing} className="w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-2xl font-bold text-lg flex items-center justify-center gap-3 transition-all mt-4">
-                {isProcessing ? (<><Loader2 className="animate-spin"/> {processLog}</>) : (<>شروع ترجمه <ArrowLeft/></>)}
-              </button>
-              
-              {!isManual && <p className="text-[10px] text-gray-600 mt-4 text-center">نکته: اگر خطای دانلود گرفتید، متن مقاله را کپی کرده و از حالت "دستی" استفاده کنید.</p>}
+              <div className="space-y-4">
+                {inputType === 'link' ? (
+                    <div className="relative">
+                      <input 
+                        type="url" 
+                        placeholder="https://medium.com/..." 
+                        className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 pr-12 pl-4 text-white text-left dir-ltr placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-all"
+                        value={autoUrl}
+                        onChange={(e) => setAutoUrl(e.target.value)}
+                        disabled={isProcessing}
+                      />
+                      <div className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500"><LinkIcon size={20}/></div>
+                    </div>
+                ) : (
+                    <textarea 
+                        placeholder="متن مقاله را اینجا پیست کنید..." 
+                        className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 text-white text-left dir-ltr placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-all min-h-[150px]"
+                        value={manualText}
+                        onChange={(e) => setManualText(e.target.value)}
+                        disabled={isProcessing}
+                    />
+                )}
+
+                <button 
+                  onClick={handleAutoProcess} 
+                  disabled={isProcessing}
+                  className="w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-2xl font-bold text-lg shadow-lg shadow-blue-900/40 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 transition-all hover:scale-[1.02]"
+                >
+                  {isProcessing ? (
+                    <><Loader2 className="animate-spin"/> {processLog}</>
+                  ) : (
+                    <>شروع پردازش <ArrowLeft/></>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         )}
 
-        {/* بخش مدیریت مقالات */}
+        {/* بخش مدیریت و درخواست ها مثل قبل بدون تغییر */}
         {activeTab === 'manage' && (
           <div className="space-y-4 animate-in fade-in">
-             <div className="flex justify-between items-center bg-blue-900/10 border border-blue-500/20 p-4 rounded-xl text-sm">
-                <button onClick={toggleSelectAll} className="flex items-center gap-2 text-blue-300 font-bold">{selectedIds.length === allArticles.length ? <CheckSquare size={20}/> : <Square size={20}/>} انتخاب همه</button>
-                {selectedIds.length > 0 && (<button onClick={deleteSelected} className="flex items-center gap-2 bg-red-500 text-white px-4 py-2 rounded-lg font-bold"><Trash2 size={16}/> حذف</button>)}
+             <div className="flex justify-between items-center bg-blue-900/20 border border-blue-500/20 p-4 rounded-xl text-sm">
+                <div className="flex items-center gap-3"><button onClick={toggleSelectAll} className="flex items-center gap-2 text-blue-300 hover:text-white font-bold transition-colors">{selectedIds.length === allArticles.length && allArticles.length > 0 ? <CheckSquare size={20}/> : <Square size={20}/>} انتخاب همه</button><span className="text-gray-400">|</span><span className="text-gray-300">{selectedIds.length} مقاله انتخاب شده</span></div>
+                {selectedIds.length > 0 && (<button onClick={deleteSelected} className="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-bold transition-colors shadow-lg shadow-red-900/20"><Trash2 size={16}/> حذف {selectedIds.length} مورد</button>)}
              </div>
              <div className="grid gap-3">
                 {allArticles.map(article => (
-                <div key={article.id} className={`bg-[#111] border p-4 rounded-xl flex items-center justify-between transition-all ${selectedIds.includes(article.id) ? 'border-blue-500' : 'border-white/5'}`}>
-                    <div className="flex items-center gap-4">
-                      <button onClick={() => toggleSelect(article.id)}>{selectedIds.includes(article.id) ? <CheckSquare className="text-blue-500"/> : <Square className="text-gray-600"/>}</button>
-                      <div><h3 className="font-bold text-gray-200 truncate max-w-md">{article.title}</h3><span className="text-xs text-gray-500">{article.category}</span></div>
-                    </div>
-                    <Link href={`/article?id=${article.slug || article.id}`} target="_blank" className="p-2 bg-white/5 rounded-lg text-blue-400"><Eye size={18}/></Link>
+                <div key={article.id} className={`bg-[#111]/80 backdrop-blur-md border p-4 rounded-xl flex items-center justify-between group transition-all ${selectedIds.includes(article.id) ? 'border-blue-500 bg-blue-900/10' : 'border-white/5 hover:border-white/20'}`}>
+                    <div className="flex items-center gap-4 overflow-hidden"><button onClick={() => toggleSelect(article.id)} className={`text-gray-500 hover:text-blue-400 transition-colors ${selectedIds.includes(article.id) ? 'text-blue-500' : ''}`}>{selectedIds.includes(article.id) ? <CheckSquare size={24}/> : <Square size={24}/>}</button><div><h3 className="font-bold text-gray-200 truncate max-w-md">{article.title}</h3><div className="flex gap-3 text-xs text-gray-500 mt-1"><span>{new Date(article.created_at).toLocaleDateString('fa-IR')}</span><span className="bg-white/5 px-2 rounded">{article.category}</span></div></div></div>
+                    <div className="flex gap-2"><Link href={`/article?id=${article.slug || article.id}`} target="_blank" className="p-2 bg-white/5 rounded-lg hover:bg-white/10 text-blue-400" title="مشاهده"><Eye size={18}/></Link></div>
                 </div>
                 ))}
              </div>
           </div>
         )}
 
-        {/* بخش درخواست‌ها */}
         {activeTab === 'requests' && (
           <div className="space-y-4 animate-in fade-in">
             {requests.length === 0 ? <p className="text-gray-500 text-center py-20 bg-white/5 rounded-3xl">صف خالی است.</p> : requests.map(req => (
               <div key={req.id} className="bg-[#111] border border-white/10 p-4 rounded-xl flex items-center justify-between">
                 <p className="text-blue-400 text-sm truncate w-96 dir-ltr text-left font-mono">{req.url}</p>
-                <div className="flex gap-2">
-                  <button onClick={() => { setAutoUrl(req.url); setActiveTab('create'); setIsManual(false); }} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold">ترجمه</button>
-                  <button onClick={() => markAsDone(req.id)} className="p-2 bg-green-500/20 text-green-500 rounded-lg"><Check size={18}/></button>
-                </div>
+                <div className="flex gap-2"><button onClick={() => {navigator.clipboard.writeText(req.url); setAutoUrl(req.url); setActiveTab('create');}} className="px-3 py-1.5 bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white rounded-lg text-xs font-bold transition-colors">ترجمه خودکار</button><button onClick={() => markAsDone(req.id)} className="p-2 bg-green-500/20 text-green-500 rounded-lg"><Check size={18}/></button></div>
               </div>
             ))}
           </div>
