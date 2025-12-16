@@ -3,9 +3,9 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { ArrowLeft, Lock, FileText, LogOut, Loader2, Save, Trash2, Eye, CheckCircle, Code, PenTool, CheckSquare, Square, Check } from 'lucide-react';
-import Link from 'next/link';
+import { Lock, FileText, LogOut, Loader2, Save, Trash2, Eye, Code, PenTool, CheckSquare, Square } from 'lucide-react';
 import Navbar from '@/components/Navbar';
+import Link from 'next/link';
 
 export default function AdminPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -65,13 +65,16 @@ export default function AdminPage() {
   };
 
   // ----------------------------------------------------------------
-  // روش اول: تولید محتوا از متن (Text -> AI -> Save)
+  // روش هوشمند: تلاش با مدل‌های مختلف (Text -> AI -> Save)
   // ----------------------------------------------------------------
   const handleGenerateFromText = async () => {
     if (rawText.length < 50) { alert('متن وارد شده خیلی کوتاه است!'); return; }
     
     setIsProcessing(true);
-    setProcessLog('🤖 در حال ترجمه و بازنویسی با Gemini...');
+    
+    // لیست مدل‌ها به ترتیب اولویت
+    const models = ['gemini-1.5-flash', 'gemini-1.5-flash-latest', 'gemini-pro', 'gemini-1.0-pro'];
+    let success = false;
 
     try {
       const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
@@ -96,33 +99,62 @@ export default function AdminPage() {
           "read_time": "۵ دقیقه",
           "cover_url": "https://images.unsplash.com/photo-1488590528505-98d2b5aba04b?auto=format&fit=crop&w=1200&q=80"
         }
-        (Note: For cover_url, choose a random relevant Unsplash ID if specific one not found)
 
         Input Text:
         ${rawText.substring(0, 30000)}
       `;
 
-      // درخواست مستقیم به گوگل
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-        }
-      );
+      let aiText = '';
 
-      if (!response.ok) throw new Error(`خطای گوگل: ${response.status}`);
+      // حلقه تلاش برای مدل‌ها
+      for (const modelName of models) {
+          try {
+              setProcessLog(`🤖 تلاش با مدل ${modelName}...`);
+              
+              const response = await fetch(
+                `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
+                {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                }
+              );
 
-      const result = await response.json();
-      const aiText = result.candidates?.[0]?.content?.parts?.[0]?.text;
-      
-      if (!aiText) throw new Error('پاسخی دریافت نشد.');
+              if (response.ok) {
+                  const result = await response.json();
+                  aiText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                  if (aiText) {
+                      success = true;
+                      break; // موفق شدیم، از حلقه خارج شو
+                  }
+              } else {
+                  console.warn(`Model ${modelName} failed: ${response.status}`);
+              }
+          } catch (e) {
+              console.warn(`Error with ${modelName}`, e);
+          }
+      }
+
+      if (!success || !aiText) {
+          throw new Error('هیچکدام از مدل‌های گوگل پاسخ ندادند. لطفا VPN را چک کنید.');
+      }
+
+      setProcessLog('📝 در حال پردازش پاسخ...');
 
       // تمیزکاری و پارس کردن JSON
       const cleanJson = aiText.replace(/```json/g, '').replace(/```/g, '').trim();
-      const articleData = JSON.parse(cleanJson);
+      
+      let articleData;
+      try {
+        articleData = JSON.parse(cleanJson);
+      } catch (e) {
+        // تلاش دوم برای استخراج JSON
+        const match = cleanJson.match(/\{[\s\S]*\}/);
+        if (match) articleData = JSON.parse(match[0]);
+        else throw new Error('فرمت پاسخ هوش مصنوعی صحیح نیست.');
+      }
 
+      setProcessLog('💾 ذخیره در دیتابیس...');
       await saveToSupabase(articleData);
       
       setRawText('');
@@ -137,7 +169,7 @@ export default function AdminPage() {
   };
 
   // ----------------------------------------------------------------
-  // روش دوم: ورود مستقیم JSON (Paste JSON -> Save)
+  // روش دوم: ورود مستقیم JSON
   // ----------------------------------------------------------------
   const handleImportJson = async () => {
     try {
@@ -149,7 +181,7 @@ export default function AdminPage() {
         try {
             data = JSON.parse(jsonInput);
         } catch (e) {
-            throw new Error('فرمت JSON اشتباه است. لطفاً چک کنید.');
+            throw new Error('فرمت JSON اشتباه است.');
         }
 
         await saveToSupabase(data);
@@ -165,7 +197,6 @@ export default function AdminPage() {
 
   // تابع مشترک ذخیره در دیتابیس
   const saveToSupabase = async (data: any) => {
-      // اطمینان از یونیک بودن اسلاگ
       const finalSlug = (data.slug || data.title).replace(/\s+/g, '-').toLowerCase() + '-' + Math.floor(Math.random() * 1000);
       
       const { error } = await supabase.from('articles').insert([{
