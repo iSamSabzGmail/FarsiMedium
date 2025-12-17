@@ -1,224 +1,100 @@
-// --- START OF FILE app/page.tsx ---
-
 'use client';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Search, Sparkles, ArrowLeft, BookOpen, Hash, TrendingUp, Clock, AlertCircle, Send, CheckCircle2 } from 'lucide-react';
-import Link from 'next/link';
+import { Lock, FileText, LogOut, Loader2, Save, Trash2, Eye, CheckSquare, Square, Type, AlignLeft, Image as ImageIcon, LayoutList, Link as LinkIcon, Code, ArrowDown } from 'lucide-react';
 import Navbar from '@/components/Navbar';
-import { motion } from 'framer-motion';
+import Link from 'next/link';
 
-export default function Home() {
-  const [articles, setArticles] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  
-  // برای بخش درخواست مقاله
-  const [requestUrl, setRequestUrl] = useState('');
-  const [requestStatus, setRequestStatus] = useState<'idle' | 'loading' | 'success'>('idle');
+export default function AdminPage() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [password, setPassword] = useState('');
+  const [activeTab, setActiveTab] = useState<'editor' | 'manage'>('editor');
+  const [jsonInput, setJsonInput] = useState('');
+  const [formData, setFormData] = useState({
+    title: '', slug: '', summary: '', content: '', category: 'تکنولوژی', read_time: '۵ دقیقه', cover_url: ''
+  });
+  const [isSaving, setIsSaving] = useState(false);
+  const [allArticles, setAllArticles] = useState<any[]>([]);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
-  useEffect(() => {
-    fetchArticles();
-  }, []);
+  useEffect(() => { const isLoggedIn = localStorage.getItem('medium_admin_auth'); if (isLoggedIn === 'true') setIsAuthenticated(true); }, []);
+  const checkPassword = () => { if (password === 'sam123') { setIsAuthenticated(true); localStorage.setItem('medium_admin_auth', 'true'); } else { alert('رمز اشتباه است!'); } };
+  const handleLogout = () => { setIsAuthenticated(false); localStorage.removeItem('medium_admin_auth'); setPassword(''); };
+  useEffect(() => { if (isAuthenticated && activeTab === 'manage') { fetchArticles(); } }, [isAuthenticated, activeTab]);
+  const fetchArticles = async () => { const { data } = await supabase.from('articles').select('id, title, created_at, category, slug').order('created_at', { ascending: false }); setAllArticles(data || []); };
+  const handleParseJson = () => { if (!jsonInput.trim()) { alert('JSON خالی است'); return; } try { const data = JSON.parse(jsonInput); setFormData({ title: data.title || '', slug: data.slug || '', summary: data.summary || '', content: data.content || '', category: data.category || 'تکنولوژی', read_time: data.read_time || '۵ دقیقه', cover_url: data.cover_url || '' }); alert('✅ فرم پر شد!'); setJsonInput(''); } catch { alert('❌ فرمت JSON اشتباه است.'); } };
+  const handleSave = async () => { if (!formData.title || !formData.content) { alert('عنوان و متن الزامی است.'); return; } setIsSaving(true); try { let finalSlug = formData.slug.trim() || formData.title.replace(/\s+/g, '-').toLowerCase(); finalSlug += '-' + Math.floor(Math.random() * 1000); const { error } = await supabase.from('articles').insert([{ ...formData, slug: finalSlug, published: true, source_url: 'JSON Import' }]); if (error) throw error; alert('✅ ذخیره شد!'); setFormData({ title: '', slug: '', summary: '', content: '', category: 'تکنولوژی', read_time: '۵ دقیقه', cover_url: '' }); } catch (e: any) { alert('خطا: ' + e.message); } finally { setIsSaving(false); } };
+  const handleChange = (e: any) => { const { name, value } = e.target; setFormData(prev => ({ ...prev, [name]: value })); };
+  const toggleSelect = (id: string) => { if (selectedIds.includes(id)) setSelectedIds(selectedIds.filter(item => item !== id)); else setSelectedIds([...selectedIds, id]); };
+  const toggleSelectAll = () => { if (selectedIds.length === allArticles.length) setSelectedIds([]); else setSelectedIds(allArticles.map(a => a.id)); };
+  const deleteSelected = async () => { if (!confirm(`حذف ${selectedIds.length} مورد؟`)) return; const { error } = await supabase.from('articles').delete().in('id', selectedIds); if (!error) { setAllArticles(allArticles.filter(a => !selectedIds.includes(a.id))); setSelectedIds([]); alert('🗑️ پاک شدند!'); } };
 
-  const fetchArticles = async () => {
-    const { data } = await supabase
-      .from('articles')
-      .select('id, title, summary, category, created_at, cover_url, slug, read_time')
-      .eq('published', true)
-      .order('created_at', { ascending: false });
-    
-    setArticles(data || []);
-    setLoading(false);
-  };
-
-  const submitRequest = async () => {
-    if (!requestUrl) return;
-    setRequestStatus('loading');
-    await supabase.from('requests').insert([{ url: requestUrl }]);
-    setRequestStatus('success');
-    setRequestUrl('');
-    setTimeout(() => setRequestStatus('idle'), 3000);
-  };
-
-  // فیلتر کردن مقالات بر اساس جستجو
-  const filteredArticles = articles.filter(a => a.title.includes(searchQuery));
-
-  return (
-    <div className="min-h-screen bg-[#050505] text-white font-vazir selection:bg-green-500/30 selection:text-green-200 overflow-x-hidden" dir="rtl">
-      
-      {/* --- افکت نوری پس‌زمینه (Glow Effects) --- */}
-      <div className="fixed top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-green-600/10 blur-[120px] rounded-full pointer-events-none z-0" />
-      <div className="fixed bottom-0 right-0 w-[600px] h-[300px] bg-blue-600/5 blur-[120px] rounded-full pointer-events-none z-0" />
-
-      {/* نوبار */}
-      <div className="relative z-50">
-        <Navbar />
-      </div>
-
-      <main className="max-w-7xl mx-auto px-6 pt-20 pb-32 relative z-10">
-        
-        {/* --- بخش هیرو (Hero Section) --- */}
-        <div className="text-center max-w-3xl mx-auto mb-24 space-y-8">
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }} 
-            animate={{ opacity: 1, y: 0 }} 
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10 text-green-400 text-sm font-bold backdrop-blur-md mb-4"
-          >
-            <Sparkles size={16} />
-            <span>بهترین مقالات تکنولوژی جهان به زبان فارسی</span>
-          </motion.div>
-          
-          <motion.h1 
-            initial={{ opacity: 0, y: 20 }} 
-            animate={{ opacity: 1, y: 0 }} 
-            transition={{ delay: 0.1 }}
-            className="text-5xl md:text-7xl font-black tracking-tighter leading-tight"
-          >
-            جهانِ دانش <br/>
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-emerald-600 drop-shadow-[0_0_30px_rgba(34,197,94,0.4)]">بدون مرز زبانی</span>
-          </motion.h1>
-
-          <motion.p 
-            initial={{ opacity: 0, y: 20 }} 
-            animate={{ opacity: 1, y: 0 }} 
-            transition={{ delay: 0.2 }}
-            className="text-gray-400 text-lg md:text-xl leading-relaxed"
-          >
-            ما بهترین مقالات مدیوم (Medium) را با کمک هوش مصنوعی ترجمه و بازنویسی می‌کنیم تا شما همیشه به‌روز باشید.
-          </motion.p>
-
-          {/* سرچ بار */}
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }} 
-            animate={{ opacity: 1, y: 0 }} 
-            transition={{ delay: 0.3 }}
-            className="relative max-w-xl mx-auto group"
-          >
-            <div className="absolute inset-0 bg-green-500/20 blur-xl rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-            <div className="relative flex items-center bg-[#111] border border-white/10 rounded-2xl p-2 shadow-2xl focus-within:border-green-500/50 transition-all">
-              <Search className="mr-4 text-gray-500" />
-              <input 
-                type="text" 
-                placeholder="جستجو در مقالات..." 
-                className="w-full bg-transparent border-none outline-none text-white placeholder-gray-500 py-3 px-2 font-bold"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-          </motion.div>
+  if (!isAuthenticated) return (
+    <div className="min-h-screen flex items-center justify-center p-4 font-vazir bg-[#050505]" dir="rtl">
+        <div className="bg-[#111] p-8 rounded-3xl border border-white/10 text-center space-y-4 max-w-sm w-full shadow-2xl">
+            <div className="w-16 h-16 bg-green-500/10 rounded-full flex items-center justify-center mx-auto text-green-500 mb-4"><Lock/></div>
+            <h2 className="text-white font-bold text-xl">ورود به پنل</h2>
+            <input type="password" placeholder="رمز عبور" value={password} onChange={e=>setPassword(e.target.value)} className="w-full bg-black/40 p-3 rounded-xl text-white text-center border border-white/10 outline-none focus:border-green-500"/>
+            <button onClick={checkPassword} className="w-full bg-green-600 p-3 rounded-xl text-white font-bold hover:bg-green-500 transition-colors shadow-[0_0_20px_-5px_rgba(34,197,94,0.5)]">ورود</button>
         </div>
-
-        {/* --- لیست مقالات (Grid) --- */}
-        <div className="mb-32">
-          <div className="flex items-center justify-between mb-8">
-             <h2 className="text-2xl font-bold flex items-center gap-3"><TrendingUp className="text-green-500"/> آخرین مقالات</h2>
-          </div>
-
-          {loading ? (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              {[1, 2, 3].map(i => (
-                <div key={i} className="bg-[#111] border border-white/5 rounded-3xl h-96 animate-pulse"></div>
-              ))}
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {filteredArticles.map((article, index) => (
-                <motion.div 
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.1 }}
-                  key={article.id} 
-                >
-                  <Link href={`/article?id=${article.slug || article.id}`} className="group relative block bg-[#111] border border-white/10 rounded-[2rem] overflow-hidden hover:border-green-500/50 transition-all duration-500 hover:-translate-y-2 hover:shadow-[0_0_40px_-10px_rgba(34,197,94,0.3)] h-full flex flex-col">
-                    
-                    {/* تصویر مقاله */}
-                    <div className="aspect-[16/10] relative overflow-hidden">
-                      <img 
-                        src={article.cover_url || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80"} 
-                        alt={article.title}
-                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-[#111] to-transparent opacity-80" />
-                      
-                      <div className="absolute top-4 right-4 bg-black/60 backdrop-blur-md border border-white/10 px-3 py-1 rounded-full text-xs font-bold text-white flex items-center gap-1">
-                        <Hash size={12} className="text-green-400"/> {article.category}
-                      </div>
-                    </div>
-
-                    {/* محتوا */}
-                    <div className="p-6 flex-1 flex flex-col">
-                      <h3 className="text-xl font-bold leading-snug mb-3 group-hover:text-green-400 transition-colors line-clamp-2">
-                        {article.title}
-                      </h3>
-                      <p className="text-gray-400 text-sm line-clamp-3 leading-relaxed mb-6 flex-1">
-                        {article.summary}
-                      </p>
-                      
-                      <div className="flex items-center justify-between text-xs font-bold text-gray-500 border-t border-white/5 pt-4 mt-auto">
-                        <div className="flex items-center gap-3">
-                           <span className="flex items-center gap-1"><Clock size={14}/> {article.read_time}</span>
-                           <span>{new Date(article.created_at).toLocaleDateString('fa-IR')}</span>
-                        </div>
-                        <span className="flex items-center gap-1 text-green-500 group-hover:translate-x-1 transition-transform">
-                          مطالعه <ArrowLeft size={16}/>
-                        </span>
-                      </div>
-                    </div>
-                  </Link>
-                </motion.div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* --- بخش درخواست مقاله (Request Box) --- */}
-        <div className="relative max-w-4xl mx-auto">
-           {/* افکت نوری پشت باکس */}
-           <div className="absolute inset-0 bg-gradient-to-r from-green-600/20 to-blue-600/20 blur-3xl rounded-full opacity-50 pointer-events-none" />
-           
-           <div className="relative bg-[#111]/80 backdrop-blur-2xl border border-white/10 rounded-[2.5rem] p-8 md:p-12 text-center overflow-hidden">
-              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-green-500 to-transparent opacity-50" />
-              
-              <h2 className="text-3xl md:text-4xl font-black mb-4">مقاله‌ای در نظر دارید؟</h2>
-              <p className="text-gray-400 mb-8 max-w-lg mx-auto">لینک مقاله مدیوم مورد نظرتان را وارد کنید. ربات‌های ما آن را بررسی، ترجمه و به لیست اضافه می‌کنند.</p>
-              
-              <div className="flex flex-col md:flex-row gap-3 max-w-lg mx-auto">
-                <input 
-                  type="url" 
-                  placeholder="https://medium.com/@username/..." 
-                  className="flex-1 bg-black/50 border border-white/10 rounded-2xl px-6 py-4 text-left dir-ltr focus:outline-none focus:border-green-500 transition-colors text-white placeholder-gray-600"
-                  value={requestUrl}
-                  onChange={(e) => setRequestUrl(e.target.value)}
-                />
-                <button 
-                  onClick={submitRequest}
-                  disabled={requestStatus !== 'idle'}
-                  className={`px-8 py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all ${
-                    requestStatus === 'success' 
-                    ? 'bg-green-600 text-white' 
-                    : 'bg-white text-black hover:bg-green-400 hover:text-black hover:shadow-[0_0_20px_rgba(74,222,128,0.5)]'
-                  }`}
-                >
-                  {requestStatus === 'loading' ? <Loader2 className="animate-spin"/> : 
-                   requestStatus === 'success' ? <><CheckCircle2/> ثبت شد</> : 
-                   <><Send size={18}/> ارسال</>}
-                </button>
-              </div>
-           </div>
-        </div>
-
-      </main>
-
-      {/* فوتر ساده */}
-      <footer className="text-center py-10 text-gray-600 text-sm relative z-10">
-        <p>© 2024 FarsiMedium - قدرت گرفته از هوش مصنوعی</p>
-      </footer>
-
     </div>
   );
-}
 
-function Loader2({ className }: { className?: string }) {
-  return <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+  return (
+    <div className="min-h-screen text-white font-vazir pb-20 bg-[#050505]" dir="rtl">
+      <Navbar />
+      <div className="max-w-6xl mx-auto px-6 mt-10">
+        <div className="flex justify-between items-center mb-8">
+            <h1 className="text-3xl font-black text-transparent bg-clip-text bg-gradient-to-l from-green-400 to-white">داشبورد مدیریت</h1>
+            <button onClick={handleLogout} className="flex items-center gap-2 text-red-400 hover:text-red-300 bg-red-500/10 px-4 py-2 rounded-xl transition-colors text-sm font-bold"><LogOut size={16}/> خروج</button>
+        </div>
+
+        <div className="flex flex-wrap gap-4 mb-8 bg-[#111] border border-white/5 p-2 rounded-2xl sticky top-24 z-40 shadow-xl">
+            <button onClick={() => setActiveTab('editor')} className={`flex-1 px-4 py-3 rounded-xl font-bold transition-all text-sm flex items-center justify-center gap-2 ${activeTab === 'editor' ? 'bg-green-600 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}><Code size={18}/> ایمپورت JSON</button>
+            <button onClick={() => setActiveTab('manage')} className={`flex-1 px-4 py-3 rounded-xl font-bold transition-all text-sm flex items-center justify-center gap-2 ${activeTab === 'manage' ? 'bg-green-600 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}><FileText size={18}/> مدیریت مقالات</button>
+        </div>
+
+        {activeTab === 'editor' && (
+          <div className="animate-in fade-in max-w-4xl mx-auto space-y-8">
+            <div className="bg-[#111] border border-green-500/20 p-6 rounded-3xl relative overflow-hidden shadow-2xl">
+                <div className="flex items-center gap-2 mb-4 text-green-400 font-bold"><Code size={20}/> JSON ورودی</div>
+                <textarea value={jsonInput} onChange={(e) => setJsonInput(e.target.value)} placeholder='{ "title": "...", "content": "..." }' className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-sm font-mono text-green-300 min-h-[150px] mb-4 focus:outline-none focus:border-green-500 transition-all dir-ltr text-left"/>
+                <button onClick={handleParseJson} className="bg-green-600 hover:bg-green-500 text-white px-6 py-3 rounded-xl font-bold text-sm flex items-center gap-2 shadow-[0_0_20px_-5px_rgba(34,197,94,0.5)] w-full justify-center">جایگذاری در فرم <ArrowDown size={18}/></button>
+            </div>
+
+            <div className="bg-[#111] border border-white/5 p-8 rounded-3xl space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2"><label className="text-sm text-gray-400 flex items-center gap-2"><Type size={16}/> عنوان</label><input name="title" value={formData.title} onChange={handleChange} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 focus:border-green-500 outline-none"/></div>
+                  <div className="space-y-2"><label className="text-sm text-gray-400 flex items-center gap-2"><LayoutList size={16}/> دسته‌بندی</label><select name="category" value={formData.category} onChange={handleChange} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 focus:border-green-500 outline-none text-gray-300"><option>تکنولوژی</option><option>هک و امنیت</option><option>هوش مصنوعی</option><option>برنامه‌نویسی</option><option>استارتاپ</option></select></div>
+              </div>
+              <div className="space-y-2"><label className="text-sm text-gray-400 flex items-center gap-2"><AlignLeft size={16}/> خلاصه</label><textarea name="summary" value={formData.summary} onChange={handleChange} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 focus:border-green-500 outline-none h-24 resize-none"/></div>
+              <div className="space-y-2"><label className="text-sm text-gray-400 flex items-center gap-2"><FileText size={16}/> متن اصلی (Markdown)</label><textarea name="content" value={formData.content} onChange={handleChange} className="w-full bg-black/40 border border-white/10 rounded-xl p-4 focus:border-green-500 outline-none min-h-[400px] font-mono text-sm leading-relaxed"/></div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2"><label className="text-sm text-gray-400 flex items-center gap-2"><ImageIcon size={16}/> عکس کاور</label><input name="cover_url" value={formData.cover_url} onChange={handleChange} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 focus:border-green-500 outline-none dir-ltr text-left"/></div>
+                  <div className="space-y-2"><label className="text-sm text-gray-400 flex items-center gap-2"><LinkIcon size={16}/> اسلاگ</label><input name="slug" value={formData.slug} onChange={handleChange} className="w-full bg-black/40 border border-white/10 rounded-xl p-3 focus:border-green-500 outline-none dir-ltr text-left"/></div>
+              </div>
+              <button onClick={handleSave} disabled={isSaving} className="w-full bg-green-600 hover:bg-green-500 text-white py-4 rounded-2xl font-bold text-lg shadow-[0_0_20px_-5px_rgba(34,197,94,0.5)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 transition-all">{isSaving ? <><Loader2 className="animate-spin"/> در حال ذخیره...</> : <><Save/> انتشار</>}</button>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'manage' && (
+          <div className="space-y-4 animate-in fade-in">
+             <div className="flex justify-between items-center bg-green-900/10 border border-green-500/20 p-4 rounded-xl text-sm">
+                <div className="flex items-center gap-3"><button onClick={toggleSelectAll} className="flex items-center gap-2 text-green-400 hover:text-white font-bold transition-colors">{selectedIds.length === allArticles.length && allArticles.length > 0 ? <CheckSquare size={20}/> : <Square size={20}/>} انتخاب همه</button><span className="text-gray-400">|</span><span className="text-gray-300">{selectedIds.length} مقاله</span></div>
+                {selectedIds.length > 0 && (<button onClick={deleteSelected} className="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg font-bold transition-colors shadow-lg shadow-red-900/20"><Trash2 size={16}/> حذف</button>)}
+             </div>
+             <div className="grid gap-3">
+                {allArticles.map(article => (
+                <div key={article.id} className={`bg-[#111] backdrop-blur-md border p-4 rounded-xl flex items-center justify-between group transition-all ${selectedIds.includes(article.id) ? 'border-green-500 bg-green-900/10' : 'border-white/5 hover:border-white/20'}`}>
+                    <div className="flex items-center gap-4 overflow-hidden"><button onClick={() => toggleSelect(article.id)} className={`text-gray-500 hover:text-green-400 transition-colors ${selectedIds.includes(article.id) ? 'text-green-500' : ''}`}>{selectedIds.includes(article.id) ? <CheckSquare size={24}/> : <Square size={24}/>}</button><div><h3 className="font-bold text-gray-200 truncate max-w-md">{article.title}</h3><div className="flex gap-3 text-xs text-gray-500 mt-1"><span>{new Date(article.created_at).toLocaleDateString('fa-IR')}</span><span className="bg-white/5 px-2 rounded">{article.category}</span></div></div></div>
+                    <div className="flex gap-2"><Link href={`/article?id=${article.slug || article.id}`} target="_blank" className="p-2 bg-white/5 rounded-lg hover:bg-white/10 text-green-400" title="مشاهده"><Eye size={18}/></Link></div>
+                </div>
+                ))}
+             </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }

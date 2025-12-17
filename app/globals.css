@@ -4,46 +4,55 @@
 
 :root {
   --foreground-rgb: 255, 255, 255;
-  --background-start-rgb: 5, 5, 5;
-  --background-end-rgb: 10, 10, 10;
 }
 
 body {
-  color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      rgb(var(--background-start-rgb)),
-      rgb(var(--background-end-rgb))
-    );
-  min-height: 100vh;
+  color: #ffffff;
+  background-color: #050505; /* سیاه خالص */
+  overflow-x: hidden;
 }
 
-/* استایل مخصوص اسکرول بار */
+/* --- استایل اسکرول بار نئونی --- */
 ::-webkit-scrollbar {
-  width: 8px;
-}
-::-webkit-scrollbar-track {
-  background: #111;
-}
-::-webkit-scrollbar-thumb {
-  background: #22c55e;
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #16a34a;
+  width: 10px;
+  background: #050505;
 }
 
-/* استایل برای نمایش کدها (Highlight.js Theme) */
+::-webkit-scrollbar-thumb {
+  background: #22c55e; /* سبز نئونی */
+  border-radius: 5px;
+  border: 2px solid #050505;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #4ade80; /* سبز روشن‌تر هنگام هاور */
+}
+
+/* --- استایل تمیز برای کدها --- */
+/* این تنظیمات باعث می‌شود تگ‌های pre و code فونت مناسب داشته باشند */
 pre {
   direction: ltr;
-  background: #1a1a1a !important;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  text-align: left;
+  background: #151515 !important;
+  border: 1px solid rgba(74, 222, 128, 0.2);
   border-radius: 0.75rem;
-  padding: 1rem;
-  overflow-x: auto;
+  padding: 0 !important; /* پدینگ صفر چون highlight.js خودش پدینگ می‌دهد */
   margin: 1.5rem 0;
+  overflow: hidden; /* گوشه‌ها گرد بمانند */
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
 }
-code {
-  font-family: 'Courier New', Courier, monospace;
-  color: #4ade80; /* سبز نئونی */
+
+/* کانتینر داخلی کد */
+pre > code {
+  font-family: 'Fira Code', 'Courier New', monospace !important;
+  font-size: 0.9rem !important;
+  line-height: 1.7 !important;
+  display: block;
+  padding: 1.5rem !important;
+  overflow-x: auto;
+}
+
+/* حذف استایل‌های پیش‌فرض مزاحم */
+.prose pre {
+  background-color: transparent !important;
 }
