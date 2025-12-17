@@ -31,46 +31,42 @@ export default function Home() {
   return (
     <div className="min-h-screen text-white font-vazir relative selection:bg-green-500/30 selection:text-green-200" dir="rtl">
       
-      {/* --- نورپردازی پس‌زمینه (Background Glows) --- */}
+      {/* نورپردازی پس‌زمینه */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
-          {/* نور سبز بزرگ بالا وسط */}
           <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-[1000px] h-[600px] bg-green-600/15 blur-[130px] rounded-full opacity-60 mix-blend-screen animate-pulse" />
-          
-          {/* نور آبی/بنفش سمت راست پایین (برای عمق دادن) */}
           <div className="absolute bottom-[-10%] right-[-10%] w-[800px] h-[600px] bg-blue-600/10 blur-[150px] rounded-full opacity-40" />
-          
-          {/* نور سبز فسفری سمت چپ (برای تعادل) */}
           <div className="absolute top-[40%] left-[-20%] w-[600px] h-[600px] bg-emerald-500/10 blur-[150px] rounded-full opacity-30" />
       </div>
       
       <Navbar />
 
-      <main className="max-w-7xl mx-auto px-6 pt-32 pb-20 relative z-10">
+      <main className="max-w-7xl mx-auto px-4 md:px-6 pt-32 pb-20 relative z-10">
         
         {/* --- بخش هیرو (Hero) --- */}
         <div className="text-center max-w-5xl mx-auto mb-32">
           
+          {/* متن اصلاح شده */}
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full glass text-green-400 text-xs font-bold mb-8 shadow-[0_0_30px_-5px_rgba(34,197,94,0.3)] border-green-500/20">
-            <Zap size={14} fill="currentColor"/> <span>پلتفرم تخصصی برنامه‌نویسان</span>
+            <Zap size={14} fill="currentColor"/> <span>پلتفرم جامع تکنولوژی</span>
           </div>
           
-          <h1 className="text-6xl md:text-8xl font-black tracking-tighter mb-8 leading-tight text-white drop-shadow-2xl">
+          <h1 className="text-5xl md:text-8xl font-black tracking-tighter mb-8 leading-tight text-white drop-shadow-2xl">
             یادگیری <span className="text-transparent bg-clip-text bg-gradient-to-br from-white via-green-200 to-green-500">بی‌نهایت</span><br/>
-            در دنیای <span className="text-green-500">کدنویسی</span>
+            در دنیای <span className="text-green-500">فناوری</span>
           </h1>
           
-          <p className="text-gray-300/80 text-xl mb-12 max-w-2xl mx-auto leading-9 font-light">
-            بهترین مقالات Medium را گلچین می‌کنیم، ترجمه می‌کنیم و رایگان در اختیار شما قرار می‌دهیم.
+          <p className="text-gray-300/80 text-lg md:text-xl mb-12 max-w-2xl mx-auto leading-9 font-light">
+            بهترین مقالات Medium را در حوزه‌های تکنولوژی، هوش مصنوعی و توسعه فردی گلچین و ترجمه می‌کنیم.
           </p>
 
-          {/* جستجو (طراحی جدید) */}
+          {/* جستجو */}
           <div className="relative max-w-2xl mx-auto group">
             <div className="absolute inset-0 bg-green-500/30 blur-3xl rounded-full opacity-20 group-hover:opacity-40 transition-opacity duration-500" />
             <div className="relative flex items-center glass rounded-2xl px-4 py-3 focus-within:border-green-500/50 transition-all shadow-2xl">
               <Search className="text-gray-400 mr-2" size={24}/>
               <input 
                 type="text" 
-                placeholder="چه چیزی می‌خواهید یاد بگیرید؟ (مثلا: React, AI, Hack...)" 
+                placeholder="جستجو کنید (مثلا: هوش مصنوعی، هک، استارتاپ...)" 
                 className="bg-transparent border-none outline-none text-white w-full h-full px-2 placeholder-gray-500 text-lg font-medium"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -84,7 +80,6 @@ export default function Home() {
           {filtered.map((article) => (
             <Link key={article.id} href={`/article?id=${article.slug || article.id}`} className="group relative flex flex-col glass rounded-[2.5rem] overflow-hidden hover:-translate-y-2 transition-all duration-500">
               
-              {/* عکس مقاله */}
               <div className="aspect-[16/10] relative overflow-hidden m-2 rounded-[2rem]">
                 <img src={article.cover_url || "https://images.unsplash.com/photo-1620712943543-bcc4688e7485?auto=format&fit=crop&w=800&q=80"} alt={article.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"/>
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-60" />
@@ -93,7 +88,6 @@ export default function Home() {
                 </span>
               </div>
 
-              {/* متن کارت */}
               <div className="p-6 flex flex-col flex-1">
                 <h3 className="text-xl font-bold mb-4 text-white group-hover:text-green-400 transition-colors line-clamp-2 leading-snug">
                   {article.title}
@@ -113,16 +107,15 @@ export default function Home() {
           ))}
         </div>
 
-        {/* --- باکس درخواست (شیشه‌ای ترین حالت) --- */}
+        {/* --- باکس درخواست --- */}
         <div className="relative max-w-4xl mx-auto">
            <div className="absolute inset-0 bg-gradient-to-r from-green-500/20 to-blue-500/20 blur-3xl rounded-full pointer-events-none opacity-40" />
-           <div className="relative glass rounded-[3rem] p-10 md:p-16 text-center border border-white/10 overflow-hidden">
+           <div className="relative glass rounded-[3rem] p-8 md:p-16 text-center border border-white/10 overflow-hidden">
              
-             {/* پترن نقطه‌ای پس‌زمینه */}
              <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(#fff 1px, transparent 1px)', backgroundSize: '30px 30px' }}></div>
 
              <h2 className="text-3xl md:text-4xl font-black mb-6 text-white relative z-10">مقاله‌ای در نظر دارید؟</h2>
-             <p className="text-gray-300 mb-10 text-base max-w-lg mx-auto leading-8 relative z-10">لینک مقاله مدیوم (Medium) را برای ما ارسال کنید تا در اسرع وقت ترجمه و در سایت قرار دهیم.</p>
+             <p className="text-gray-300 mb-10 text-base max-w-lg mx-auto leading-8 relative z-10">لینک مقاله مدیوم (Medium) را ارسال کنید تا ترجمه شود.</p>
              
              <div className="flex flex-col sm:flex-row gap-4 relative z-10">
                <input 
