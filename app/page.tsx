@@ -1,3 +1,5 @@
+// --- START OF FILE app/page.tsx ---
+
 'use client';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
@@ -5,13 +7,14 @@ import { Search, Clock, ArrowLeft, Zap, Layers, Send, CheckCircle2 } from 'lucid
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 
-// لیست عکس‌های رندوم و جذاب برای وقتی که مقاله عکس ندارد
+// لیست عکس‌های رندوم و باکیفیت (Fallback)
 const FALLBACK_IMAGES = [
-  "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&w=800&q=80",
-  "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=800&q=80",
-  "https://images.unsplash.com/photo-1620712943543-bcc4688e7485?auto=format&fit=crop&w=800&q=80",
-  "https://images.unsplash.com/photo-1555949963-ff9fe0c870eb?auto=format&fit=crop&w=800&q=80",
-  "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=800&q=80",
+  "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=800&q=80", // تکنولوژی
+  "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&w=800&q=80", // امنیت
+  "https://images.unsplash.com/photo-1555949963-ff9fe0c870eb?auto=format&fit=crop&w=800&q=80", // کدنویسی
+  "https://images.unsplash.com/photo-1620712943543-bcc4688e7485?auto=format&fit=crop&w=800&q=80", // هوش مصنوعی
+  "https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&w=800&q=80", // تیم
+  "https://images.unsplash.com/photo-1451187580459-43490279c0fa?auto=format&fit=crop&w=800&q=80", // شبکه
 ];
 
 export default function Home() {
@@ -23,15 +26,19 @@ export default function Home() {
   const [selectedCategory, setSelectedCategory] = useState('همه');
 
   useEffect(() => {
-    supabase.from('articles').select('id, title, summary, category, created_at, cover_url, slug, read_time')
-      .eq('published', true).order('created_at', { ascending: false })
-      .then(({ data }) => {
+    const fetch = async () => {
+        const { data } = await supabase.from('articles')
+            .select('id, title, summary, category, created_at, cover_url, slug, read_time')
+            .eq('published', true)
+            .order('created_at', { ascending: false });
+        
         if (data) {
-          setArticles(data);
-          const cats = Array.from(new Set(data.map(a => a.category).filter(Boolean)));
-          setCategories(['همه', ...cats]);
+            setArticles(data);
+            const cats = Array.from(new Set(data.map(a => a.category).filter(Boolean)));
+            setCategories(['همه', ...cats]);
         }
-      });
+    };
+    fetch();
   }, []);
 
   const submitRequest = async () => {
@@ -49,9 +56,18 @@ export default function Home() {
     return matchesSearch && matchesCategory;
   });
 
+  // تابع کمکی برای انتخاب عکس
+  const getCoverImage = (url: string | null, index: number) => {
+      // اگر لینک وجود داشت و با http شروع میشد، خودش را برگردان
+      if (url && url.startsWith('http') && url.length > 10) return url;
+      // در غیر این صورت، یک عکس رندوم از لیست برگردان
+      return FALLBACK_IMAGES[index % FALLBACK_IMAGES.length];
+  };
+
   return (
     <div className="min-h-screen text-white font-vazir relative selection:bg-green-500/30 selection:text-green-200" dir="rtl">
       
+      {/* نورپردازی */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
           <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-[1000px] h-[600px] bg-green-600/15 blur-[130px] rounded-full opacity-60 mix-blend-screen animate-pulse" />
           <div className="absolute bottom-[-10%] right-[-10%] w-[800px] h-[600px] bg-blue-600/10 blur-[150px] rounded-full opacity-40" />
@@ -62,6 +78,7 @@ export default function Home() {
 
       <main className="max-w-7xl mx-auto px-4 md:px-6 pt-32 pb-20 relative z-10">
         
+        {/* هیرو */}
         <div className="text-center max-w-5xl mx-auto mb-20">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full glass text-green-400 text-xs font-bold mb-8 shadow-[0_0_30px_-5px_rgba(34,197,94,0.3)] border-green-500/20">
             <Zap size={14} fill="currentColor"/> <span>پلتفرم جامع تکنولوژی</span>
@@ -85,6 +102,7 @@ export default function Home() {
           </div>
         </div>
 
+        {/* تب‌ها */}
         <div className="mb-12 overflow-x-auto pb-4 scrollbar-hide">
             <div className="flex justify-center gap-3 min-w-max px-4">
                 {categories.map(cat => (
@@ -95,14 +113,19 @@ export default function Home() {
             </div>
         </div>
 
+        {/* لیست مقالات */}
         {filtered.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-32">
             {filtered.map((article, index) => (
                 <Link key={article.id} href={`/article?id=${article.slug || article.id}`} className="group relative flex flex-col glass rounded-[2.5rem] overflow-hidden hover:-translate-y-2 transition-all duration-500">
                 
-                <div className="aspect-[16/10] relative overflow-hidden m-2 rounded-[2rem]">
-                    {/* استفاده از عکس پیش‌فرض رندوم */}
-                    <img src={article.cover_url && article.cover_url.length > 5 ? article.cover_url : FALLBACK_IMAGES[index % FALLBACK_IMAGES.length]} alt={article.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"/>
+                <div className="aspect-[16/10] relative overflow-hidden m-2 rounded-[2rem] bg-[#111]">
+                    <img 
+                        src={getCoverImage(article.cover_url, index)} 
+                        alt={article.title} 
+                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                        onError={(e) => { e.currentTarget.src = FALLBACK_IMAGES[index % FALLBACK_IMAGES.length]; }} 
+                    />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-60" />
                     <span className="absolute top-4 right-4 bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-xl text-[11px] font-bold text-white border border-white/10 shadow-lg">{article.category}</span>
                 </div>
@@ -125,11 +148,12 @@ export default function Home() {
             </div>
         )}
 
+        {/* باکس درخواست */}
         <div className="relative max-w-4xl mx-auto">
            <div className="absolute inset-0 bg-gradient-to-r from-green-500/20 to-blue-500/20 blur-3xl rounded-full pointer-events-none opacity-40" />
            <div className="relative glass rounded-[3rem] p-8 md:p-16 text-center border border-white/10 overflow-hidden">
              <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(#fff 1px, transparent 1px)', backgroundSize: '30px 30px' }}></div>
-             <h2 className="text-3xl md:text-4xl font-black mb-6 text-white relative z-10">مقاله‌ای در نظر دارید؟</h2>
+             <h2 className="text-3xl md:text-4xl font-black mb-6 text-white relative z-10">درخواست مقاله</h2>
              <p className="text-gray-300 mb-10 text-base max-w-lg mx-auto leading-8 relative z-10">لینک مقاله مدیوم (Medium) را ارسال کنید تا ترجمه شود.</p>
              <div className="flex flex-col sm:flex-row gap-4 relative z-10">
                <input type="text" placeholder="https://medium.com/..." className="flex-1 bg-black/40 border border-white/10 rounded-2xl px-6 py-4 text-left dir-ltr focus:border-green-500 outline-none transition-colors text-white placeholder-gray-500" value={requestUrl} onChange={(e) => setRequestUrl(e.target.value)} />
