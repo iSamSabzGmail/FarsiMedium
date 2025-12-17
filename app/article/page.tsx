@@ -7,7 +7,7 @@ import { motion, useScroll, useSpring } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import rehypeHighlight from 'rehype-highlight';
 import 'highlight.js/styles/atom-one-dark.css'; 
-import Navbar from '@/components/Navbar'; // استفاده از نوبار اصلی
+import Navbar from '@/components/Navbar';
 
 function ArticleViewer() {
   const searchParams = useSearchParams();
@@ -29,13 +29,19 @@ function ArticleViewer() {
     fetch();
   }, [slug]);
 
-  if (loading) return <div className="min-h-screen bg-[#050505] flex items-center justify-center"><div className="w-8 h-8 border-2 border-green-500 rounded-full animate-spin border-t-transparent"></div></div>;
-  if (!article) return <div className="min-h-screen bg-[#050505] flex items-center justify-center text-white">یافت نشد</div>;
+  if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="w-8 h-8 border-2 border-green-500 rounded-full animate-spin border-t-transparent"></div></div>;
+  if (!article) return <div className="min-h-screen flex items-center justify-center text-white">یافت نشد</div>;
 
   return (
-    <div className="min-h-screen bg-[#050505] text-gray-200 font-vazir pb-20 selection:bg-green-500/30 selection:text-green-200" dir="rtl">
+    <div className="min-h-screen text-gray-200 font-vazir pb-20 selection:bg-green-500/30 selection:text-green-200 relative" dir="rtl">
       
-      {/* نوار سبز پیشرفت مطالعه */}
+      {/* --- نورپردازی سراسری (کپی شده از صفحه اصلی) --- */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
+          <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-[1000px] h-[600px] bg-green-600/15 blur-[130px] rounded-full opacity-60 mix-blend-screen animate-pulse" />
+          <div className="absolute bottom-[-10%] right-[-10%] w-[800px] h-[600px] bg-blue-600/10 blur-[150px] rounded-full opacity-40" />
+      </div>
+
+      {/* نوار پیشرفت */}
       <motion.div 
         className="fixed top-0 left-0 right-0 h-1 bg-green-500 z-[100] shadow-[0_0_15px_rgba(34,197,94,0.8)] origin-right" 
         style={{ scaleX }}
@@ -44,27 +50,23 @@ function ArticleViewer() {
       
       <Navbar />
 
-      {/* 
-         اصلاح عرض: max-w-6xl برای پهن‌تر شدن 
-         px-4 md:px-8 برای فاصله از بغل در موبایل
-      */}
-      <article className="max-w-6xl mx-auto px-4 md:px-8 mt-32">
+      <article className="max-w-5xl mx-auto px-4 md:px-8 mt-32 relative z-10">
         
-        {/* کانتینر اصلی مقاله */}
-        <div className="glass rounded-[2.5rem] p-6 md:p-16 relative overflow-hidden border border-white/5">
+        {/* کانتینر مقاله (حالا کاملاً شیشه‌ای است) */}
+        <div className="glass rounded-[2.5rem] p-6 md:p-16 relative overflow-hidden border border-white/10">
           
-          {/* نور پس‌زمینه محو */}
-          <div className="absolute top-0 right-0 w-full h-96 bg-gradient-to-b from-green-500/5 to-transparent pointer-events-none"></div>
+          {/* پترن نقطه‌ای خیلی محو */}
+          <div className="absolute inset-0 opacity-5 pointer-events-none" style={{ backgroundImage: 'radial-gradient(#fff 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
           
           <header className="mb-14 text-center relative z-10">
-            <span className="text-green-400 text-xs md:text-sm font-bold bg-green-500/10 px-4 py-1.5 rounded-full border border-green-500/10 mb-6 inline-block shadow-[0_0_15px_-5px_rgba(34,197,94,0.3)] hover:scale-105 transition-transform cursor-default">
+            <span className="text-green-400 text-xs md:text-sm font-bold bg-green-500/10 px-4 py-1.5 rounded-full border border-green-500/10 mb-6 inline-block shadow-[0_0_15px_-5px_rgba(34,197,94,0.3)]">
               {article.category}
             </span>
-            <h1 className="text-3xl md:text-6xl font-black text-white mb-8 leading-tight tracking-tighter max-w-4xl mx-auto">
+            <h1 className="text-3xl md:text-6xl font-black text-white mb-8 leading-tight tracking-tighter max-w-4xl mx-auto drop-shadow-2xl">
               {article.title}
             </h1>
             
-            <div className="flex flex-wrap justify-center items-center gap-6 md:gap-10 text-gray-500 text-xs md:text-sm font-bold border-t border-b border-white/5 py-6 w-full md:w-fit mx-auto px-10">
+            <div className="flex flex-wrap justify-center items-center gap-6 md:gap-10 text-gray-400 text-xs md:text-sm font-bold border-t border-b border-white/5 py-6 w-full md:w-fit mx-auto px-10">
               <span className="flex items-center gap-2"><Clock size={18} className="text-green-500"/> {article.read_time}</span>
               <span>{new Date(article.created_at).toLocaleDateString('fa-IR')}</span>
             </div>
@@ -77,14 +79,13 @@ function ArticleViewer() {
             </div>
           )}
 
-          {/* متن اصلی مقاله */}
+          {/* متن اصلی */}
           <div className="prose prose-lg md:prose-xl prose-invert max-w-none 
-                prose-headings:text-white prose-headings:font-bold prose-headings:tracking-tighter prose-headings:mt-12 prose-headings:mb-6
-                prose-p:text-gray-300 prose-p:leading-10 prose-p:font-light prose-p:text-justify prose-p:mb-8
-                prose-a:text-green-400 prose-a:no-underline hover:prose-a:underline hover:prose-a:text-green-300 transition-colors
+                prose-headings:text-white prose-headings:font-bold prose-headings:tracking-tighter
+                prose-p:text-gray-300 prose-p:leading-10 prose-p:font-light prose-p:text-justify
+                prose-a:text-green-400 prose-a:no-underline hover:prose-a:underline
                 prose-strong:text-white prose-strong:font-bold
-                prose-ul:list-disc prose-ul:pr-5 prose-li:text-gray-300 prose-li:mb-2
-                prose-code:text-green-300 prose-code:bg-[#151515] prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-md prose-code:font-mono prose-code:text-sm prose-code:before:content-none prose-code:after:content-none
+                prose-li:text-gray-300
                 relative z-10">
             <ReactMarkdown rehypePlugins={[rehypeHighlight]}>
                 {article.content}
