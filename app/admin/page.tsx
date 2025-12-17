@@ -52,10 +52,17 @@ export default function AdminPage() {
     setAllArticles(data || []);
   };
 
+  // --- ⚡️ تابع هوشمند تمیز کردن ورودی ---
   const handleParseJson = () => {
     if (!jsonInput.trim()) { alert('JSON خالی است'); return; }
     try {
-        const data = JSON.parse(jsonInput);
+        // تلاش برای حذف کاراکترهای نامرئی که کپی/پیست را خراب می‌کنند
+        let clean = jsonInput
+            .replace(/[\u0000-\u0019]+/g, "") // حذف کاراکترهای کنترلی نامرئی
+            .trim();
+
+        const data = JSON.parse(clean);
+        
         setFormData({
             title: data.title || '',
             slug: data.slug || '',
@@ -65,9 +72,12 @@ export default function AdminPage() {
             read_time: data.read_time || '۵ دقیقه',
             cover_url: data.cover_url || ''
         });
-        alert('✅ فرم پر شد!');
+        alert('✅ فرم با موفقیت پر شد!');
         setJsonInput('');
-    } catch { alert('❌ فرمت JSON اشتباه است.'); }
+    } catch (e: any) { 
+        console.error(e);
+        alert('❌ فرمت JSON اشتباه است.\nنکته: مطمئن شوید داخل متن "content" اینتر نزده باشید (باید یک خط باشد).'); 
+    }
   };
 
   const handleSave = async () => {
@@ -108,7 +118,7 @@ export default function AdminPage() {
   if (!isAuthenticated) return (
     <div className="min-h-screen flex items-center justify-center p-4 font-vazir relative overflow-hidden bg-[#050505]" dir="rtl">
         <div className="fixed inset-0 overflow-hidden pointer-events-none">
-            <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-[1000px] h-[600px] bg-green-600/20 blur-[150px] rounded-full opacity-60" />
+            <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-green-600/20 blur-[150px] rounded-full opacity-60" />
             <div className="absolute bottom-0 right-0 w-[500px] h-[500px] bg-blue-600/10 blur-[150px] rounded-full opacity-40" />
         </div>
         
@@ -117,17 +127,16 @@ export default function AdminPage() {
                 <Lock size={32}/>
             </div>
             <h2 className="text-white font-black text-3xl">ورود مدیریت</h2>
-            <input type="password" placeholder="••••••••" value={password} onChange={e=>setPassword(e.target.value)} className="w-full bg-white/5 p-4 rounded-2xl text-white text-center border border-white/5 outline-none focus:border-green-500 focus:bg-white/10 transition-all text-lg placeholder-gray-500"/>
+            <input type="password" placeholder="••••••••" value={password} onChange={e=>setPassword(e.target.value)} className="w-full bg-white/5 p-4 rounded-2xl text-white text-center border border-white/5 outline-none focus:border-green-500 focus:bg-white/10 transition-all text-lg placeholder-gray-600"/>
             <button onClick={checkPassword} className="w-full bg-green-600 hover:bg-green-500 text-black py-4 rounded-2xl font-bold text-lg transition-all shadow-lg hover:shadow-green-900/40">ورود</button>
         </div>
     </div>
   );
 
-  // --- پنل اصلی ---
   return (
-    <div className="min-h-screen text-white font-vazir relative bg-[#050505] selection:bg-green-500/30 selection:text-green-200 overflow-x-hidden" dir="rtl">
+    <div className="min-h-screen text-white font-vazir pb-20 relative bg-[#050505] selection:bg-green-500/30 selection:text-green-200" dir="rtl">
       
-      {/* نورپردازی پس‌زمینه (دقیقاً مثل صفحه اصلی) */}
+      {/* نورپردازی پس‌زمینه */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
           <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-[1000px] h-[600px] bg-green-600/15 blur-[130px] rounded-full opacity-60 mix-blend-screen animate-pulse" />
           <div className="absolute bottom-[-10%] right-[-10%] w-[800px] h-[600px] bg-blue-600/10 blur-[150px] rounded-full opacity-40" />
@@ -135,11 +144,7 @@ export default function AdminPage() {
 
       <Navbar />
 
-      {/* 
-         اصلاح مهم: استفاده از pt-32 به جای mt-32 
-         این باعث می‌شود مشکل "کادر خالی بالا" حل شود 
-      */}
-      <div className="max-w-6xl mx-auto px-4 md:px-6 pt-32 pb-20 relative z-10">
+      <div className="max-w-6xl mx-auto px-6 mt-32 relative z-10">
         
         {/* هدر */}
         <div className="flex flex-col md:flex-row justify-between items-center mb-12 gap-6">
