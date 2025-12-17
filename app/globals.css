@@ -3,40 +3,47 @@
 @tailwind utilities;
 
 :root {
-  --bg-dark: #050505;
+  --foreground-rgb: 255, 255, 255;
+  --background-start-rgb: 5, 5, 5;
+  --background-end-rgb: 10, 10, 10;
 }
 
 body {
-  background-color: var(--bg-dark);
-  color: #e4e4e7;
-  overflow-x: hidden;
+  color: rgb(var(--foreground-rgb));
+  background: linear-gradient(
+      to bottom,
+      rgb(var(--background-start-rgb)),
+      rgb(var(--background-end-rgb))
+    );
+  min-height: 100vh;
 }
 
-/* انیمیشن توده‌های رنگی (Aurora Effect) */
-@keyframes blob {
-  0% { transform: translate(0px, 0px) scale(1); }
-  33% { transform: translate(30px, -50px) scale(1.1); }
-  66% { transform: translate(-20px, 20px) scale(0.9); }
-  100% { transform: translate(0px, 0px) scale(1); }
+/* استایل مخصوص اسکرول بار */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #111;
+}
+::-webkit-scrollbar-thumb {
+  background: #22c55e;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #16a34a;
 }
 
-.animate-blob {
-  animation: blob 7s infinite;
+/* استایل برای نمایش کدها (Highlight.js Theme) */
+pre {
+  direction: ltr;
+  background: #1a1a1a !important;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.75rem;
+  padding: 1rem;
+  overflow-x: auto;
+  margin: 1.5rem 0;
 }
-
-.animation-delay-2000 {
-  animation-delay: 2s;
-}
-
-.animation-delay-4000 {
-  animation-delay: 4s;
-}
-
-/* مخفی کردن اسکرول بار زشت ولی اسکرول کار کنه */
-.scrollbar-hide::-webkit-scrollbar {
-    display: none;
-}
-.scrollbar-hide {
-    -ms-overflow-style: none;
-    scrollbar-width: none;
+code {
+  font-family: 'Courier New', Courier, monospace;
+  color: #4ade80; /* سبز نئونی */
 }
