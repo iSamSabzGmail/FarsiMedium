@@ -9,6 +9,9 @@ import rehypeHighlight from 'rehype-highlight';
 import 'highlight.js/styles/atom-one-dark.css'; 
 import Navbar from '@/components/Navbar';
 
+// عکس پیش‌فرض برای صفحه داخلی مقاله
+const DEFAULT_COVER = "https://images.unsplash.com/photo-1620712943543-bcc4688e7485?auto=format&fit=crop&w=1200&q=80";
+
 function ArticleViewer() {
   const searchParams = useSearchParams();
   const slug = searchParams.get('id');
@@ -32,6 +35,9 @@ function ArticleViewer() {
   if (loading) return <div className="min-h-screen flex items-center justify-center"><div className="w-8 h-8 border-2 border-green-500 rounded-full animate-spin border-t-transparent"></div></div>;
   if (!article) return <div className="min-h-screen flex items-center justify-center text-white">یافت نشد</div>;
 
+  // انتخاب عکس: یا عکس مقاله، یا اگر نبود عکس پیش‌فرض
+  const coverImage = (article.cover_url && article.cover_url.length > 5) ? article.cover_url : DEFAULT_COVER;
+
   return (
     <div className="min-h-screen text-gray-200 font-vazir pb-20 selection:bg-green-500/30 selection:text-green-200 relative" dir="rtl">
       
@@ -52,6 +58,8 @@ function ArticleViewer() {
         
         <div className="glass rounded-[2.5rem] p-6 md:p-16 relative overflow-hidden border border-white/10">
           
+          <div className="absolute inset-0 opacity-5 pointer-events-none" style={{ backgroundImage: 'radial-gradient(#fff 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
+          
           <header className="mb-14 text-center relative z-10">
             <span className="text-green-400 text-xs md:text-sm font-bold bg-green-500/10 px-4 py-1.5 rounded-full border border-green-500/10 mb-6 inline-block shadow-[0_0_15px_-5px_rgba(34,197,94,0.3)]">
               {article.category}
@@ -66,13 +74,13 @@ function ArticleViewer() {
             </div>
           </header>
 
-          {/* عکس مقاله یا عکس پیش‌فرض */}
+          {/* 
+             اینجا شرط حذف شد. همیشه عکس نمایش داده می‌شود.
+             اگر عکس مقاله خالی باشد، متغیر coverImage عکس پیش‌فرض را دارد.
+          */}
           <div className="mb-16 rounded-[2rem] overflow-hidden shadow-2xl border border-white/5 relative group w-full aspect-video">
-              <img 
-                src={article.cover_url || "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&w=1200&q=80"} 
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000" 
-                alt="cover"
-              />
+              <div className="absolute inset-0 bg-green-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none mix-blend-overlay"></div>
+              <img src={coverImage} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000" alt="cover"/>
           </div>
 
           <div className="prose prose-lg md:prose-xl prose-invert max-w-none 
@@ -80,6 +88,7 @@ function ArticleViewer() {
                 prose-p:text-gray-300 prose-p:leading-10 prose-p:font-light prose-p:text-justify
                 prose-a:text-green-400 prose-a:no-underline hover:prose-a:underline
                 prose-strong:text-white prose-strong:font-bold
+                prose-li:text-gray-300
                 relative z-10">
             <ReactMarkdown rehypePlugins={[rehypeHighlight]}>
                 {article.content}
