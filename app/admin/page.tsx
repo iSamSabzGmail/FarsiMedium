@@ -52,25 +52,23 @@ export default function AdminPage() {
     setAllArticles(data || []);
   };
 
-  // --- ⚡️ پارسر هوشمند و ضدضربه JSON ---
+  // --- ⚡️ تابع تعمیرکار خودکار JSON ---
   const handleParseJson = () => {
     if (!jsonInput.trim()) { alert('JSON خالی است'); return; }
     
     try {
         let clean = jsonInput.trim();
 
-        // 1. حذف تگ‌های مارک‌داون احتمالی
+        // حذف تگ‌های مارک‌داون احتمالی
         clean = clean.replace(/```json/g, '').replace(/```/g, '');
 
-        // 2. پیدا کردن اولین { و آخرین } (حذف متن‌های اضافی قبل و بعد)
-        const firstBrace = clean.indexOf('{');
-        const lastBrace = clean.lastIndexOf('}');
-        
-        if (firstBrace !== -1 && lastBrace !== -1) {
-            clean = clean.substring(firstBrace, lastBrace + 1);
-        }
+        // ⚡️ جادوی اصلی: تعمیر اینترهای وسط متن
+        // این کد می‌گردد و اینترهای واقعی را به \n تبدیل می‌کند تا JSON خراب نشود
+        clean = clean.replace(/"((?:[^"\\]|\\.)*)"/g, function(match) {
+            return match.replace(/\n/g, '\\n').replace(/\r/g, '');
+        });
 
-        // 3. تلاش برای پارس کردن
+        // حالا پارس می‌کنیم
         const data = JSON.parse(clean);
         
         setFormData({
@@ -84,11 +82,11 @@ export default function AdminPage() {
         });
         
         alert('✅ فرم با موفقیت پر شد!');
-        setJsonInput(''); // پاک کردن ورودی برای تمیزی
+        setJsonInput(''); // پاک کردن ورودی
 
     } catch (e: any) { 
         console.error("JSON Error:", e);
-        alert(`❌ فرمت JSON اشتباه است.\n\nدلیل احتمالی: داخل متن "content" دکمه اینتر زده شده است. تمام متن باید در یک خط باشد (با \\n جدا شود).`); 
+        alert(`❌ فرمت JSON هنوز مشکل دارد. لطفاً از کد فشرده (تک خطی) استفاده کنید.`); 
     }
   };
 
