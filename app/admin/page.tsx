@@ -12,25 +12,15 @@ export default function AdminPage() {
   const [password, setPassword] = useState('');
   const [activeTab, setActiveTab] = useState<'editor' | 'manage'>('editor');
   
-  // ورودی JSON
   const [jsonInput, setJsonInput] = useState('');
-
-  // فرم اصلی
   const [formData, setFormData] = useState({
-    title: '',
-    slug: '',
-    summary: '',
-    content: '',
-    category: 'تکنولوژی',
-    read_time: '۵ دقیقه',
-    cover_url: ''
+    title: '', slug: '', summary: '', content: '', category: 'تکنولوژی', read_time: '۵ دقیقه', cover_url: ''
   });
   
   const [isSaving, setIsSaving] = useState(false);
   const [allArticles, setAllArticles] = useState<any[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
-  // --- احراز هویت ---
   useEffect(() => {
     const isLoggedIn = localStorage.getItem('medium_admin_auth');
     if (isLoggedIn === 'true') setIsAuthenticated(true);
@@ -51,7 +41,6 @@ export default function AdminPage() {
     setPassword('');
   };
 
-  // --- دریافت داده‌ها ---
   useEffect(() => {
     if (isAuthenticated && activeTab === 'manage') {
       fetchArticles();
@@ -63,7 +52,6 @@ export default function AdminPage() {
     setAllArticles(data || []);
   };
 
-  // --- لاجیک‌ها ---
   const handleParseJson = () => {
     if (!jsonInput.trim()) { alert('JSON خالی است'); return; }
     try {
@@ -116,22 +104,23 @@ export default function AdminPage() {
     if (!error) { setAllArticles(allArticles.filter(a => !selectedIds.includes(a.id))); setSelectedIds([]); alert('🗑️ پاک شدند!'); }
   };
 
-  // --- صفحه لاگین ---
+  // --- صفحه لاگین (با استایل شیشه‌ای) ---
   if (!isAuthenticated) return (
-    <div className="min-h-screen flex items-center justify-center p-4 font-vazir relative overflow-hidden" dir="rtl">
-        {/* پس‌زمینه */}
-        <div className="fixed inset-0 bg-[#050505] z-0" />
-        <div className="absolute top-[-20%] left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-green-600/20 blur-[150px] rounded-full z-0" />
+    <div className="min-h-screen flex items-center justify-center p-4 font-vazir relative overflow-hidden bg-[#050505]" dir="rtl">
+        {/* نورهای پس‌زمینه لاگین */}
+        <div className="fixed inset-0 overflow-hidden pointer-events-none">
+            <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-green-600/20 blur-[150px] rounded-full opacity-60" />
+            <div className="absolute bottom-0 right-0 w-[500px] h-[500px] bg-blue-600/10 blur-[150px] rounded-full opacity-40" />
+        </div>
         
-        {/* کارت لاگین */}
         <div className="glass p-10 rounded-[2.5rem] text-center space-y-8 max-w-md w-full shadow-2xl relative z-10 border border-white/10 backdrop-blur-xl">
-            <div className="w-24 h-24 bg-gradient-to-br from-green-500/20 to-emerald-500/10 rounded-full flex items-center justify-center mx-auto text-green-400 mb-6 shadow-[0_0_30px_-5px_rgba(34,197,94,0.3)] border border-green-500/20">
+            <div className="w-24 h-24 bg-green-500/10 rounded-full flex items-center justify-center mx-auto text-green-400 mb-6 border border-green-500/20 shadow-[0_0_30px_rgba(34,197,94,0.2)]">
                 <Lock size={36}/>
             </div>
             
             <div className="space-y-2">
                 <h2 className="text-white font-black text-3xl tracking-tight">ورود مدیریت</h2>
-                <p className="text-gray-400 text-sm">برای دسترسی به پنل، رمز عبور را وارد کنید</p>
+                <p className="text-gray-400 text-sm">رمز عبور امنیتی را وارد کنید</p>
             </div>
 
             <div className="space-y-4">
@@ -146,7 +135,7 @@ export default function AdminPage() {
                     onClick={checkPassword} 
                     className="w-full bg-green-600 hover:bg-green-500 text-black py-4 rounded-2xl font-bold text-lg transition-all shadow-[0_0_20px_-5px_rgba(34,197,94,0.6)] hover:shadow-[0_0_30px_-5px_rgba(34,197,94,0.8)] hover:scale-[1.02]"
                 >
-                    ورود
+                    ورود به پنل
                 </button>
             </div>
         </div>
@@ -154,30 +143,30 @@ export default function AdminPage() {
   );
 
   return (
-    <div className="min-h-screen text-white font-vazir pb-20 relative selection:bg-green-500/30 selection:text-green-200 bg-[#050505]" dir="rtl">
+    <div className="min-h-screen text-white font-vazir pb-20 relative bg-[#050505] selection:bg-green-500/30 selection:text-green-200" dir="rtl">
       
-      {/* نورپردازی پس‌زمینه */}
+      {/* --- نورپردازی سراسری (دقیقاً مثل صفحه اصلی) --- */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
-          <div className="absolute top-[-10%] right-[-10%] w-[800px] h-[600px] bg-green-600/10 blur-[130px] rounded-full opacity-60" />
-          <div className="absolute bottom-[10%] left-[-10%] w-[600px] h-[600px] bg-blue-600/10 blur-[150px] rounded-full opacity-40" />
+          <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-[1000px] h-[600px] bg-green-600/15 blur-[130px] rounded-full opacity-60 mix-blend-screen animate-pulse" />
+          <div className="absolute bottom-[-10%] right-[-10%] w-[800px] h-[600px] bg-blue-600/10 blur-[150px] rounded-full opacity-40" />
       </div>
 
       <Navbar />
 
       <div className="max-w-6xl mx-auto px-6 mt-32 relative z-10">
         
-        {/* هدر پنل */}
+        {/* هدر */}
         <div className="flex flex-col md:flex-row justify-between items-center mb-12 gap-6">
             <div>
                 <h1 className="text-4xl font-black text-white drop-shadow-lg mb-2">داشبورد مدیریت</h1>
-                <p className="text-gray-400 text-sm">مدیریت محتوا و مقالات سایت</p>
+                <p className="text-gray-400 text-sm font-light">کنترل پنل محتوای سایت</p>
             </div>
-            <button onClick={handleLogout} className="flex items-center gap-2 text-red-400 hover:text-red-300 bg-red-500/10 px-6 py-3 rounded-2xl transition-all text-sm font-bold border border-red-500/10 hover:border-red-500/30 hover:bg-red-500/20">
+            <button onClick={handleLogout} className="flex items-center gap-2 text-red-400 hover:text-red-300 bg-red-500/10 px-6 py-3 rounded-2xl transition-all text-sm font-bold border border-red-500/10 hover:border-red-500/30 hover:bg-red-500/20 shadow-lg hover:shadow-red-900/20">
                 <LogOut size={18}/> خروج
             </button>
         </div>
 
-        {/* منوی تب‌ها */}
+        {/* منو */}
         <div className="flex flex-wrap gap-4 mb-10 glass p-2 rounded-3xl shadow-xl border border-white/5">
             <button 
                 onClick={() => setActiveTab('editor')} 
@@ -282,7 +271,7 @@ export default function AdminPage() {
         {/* تب ۲: مدیریت */}
         {activeTab === 'manage' && (
           <div className="space-y-6 animate-in fade-in max-w-5xl mx-auto">
-             <div className="flex justify-between items-center glass p-6 rounded-3xl text-sm border border-white/10">
+             <div className="flex justify-between items-center glass p-6 rounded-3xl text-sm border border-white/10 shadow-lg">
                 <div className="flex items-center gap-4">
                     <button onClick={toggleSelectAll} className="flex items-center gap-2 text-green-400 hover:text-white font-bold transition-colors">
                         {selectedIds.length === allArticles.length && allArticles.length > 0 ? <CheckSquare size={22}/> : <Square size={22}/>} 
@@ -314,7 +303,7 @@ export default function AdminPage() {
                         </div>
                     </div>
                     <div className="flex gap-3">
-                        <Link href={`/article?id=${article.slug || article.id}`} target="_blank" className="p-3 bg-white/5 rounded-2xl hover:bg-green-500 hover:text-black text-green-400 transition-all border border-white/5 hover:border-green-500" title="مشاهده">
+                        <Link href={`/article?id=${article.slug || article.id}`} target="_blank" className="p-3 bg-white/5 rounded-2xl hover:bg-green-500 hover:text-black text-green-400 transition-all border border-white/5 hover:border-green-500 shadow-lg" title="مشاهده">
                             <Eye size={22}/>
                         </Link>
                     </div>
