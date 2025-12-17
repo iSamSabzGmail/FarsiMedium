@@ -14,7 +14,7 @@ export default function AdminPage() {
   
   const [jsonInput, setJsonInput] = useState('');
   const [formData, setFormData] = useState({
-    title: '', slug: '', summary: '', content: '', category: 'تکنولوژی', read_time: '۵ دقیقه', cover_url: ''
+    title: '', slug: '', summary: '', content: '', category: 'تکنولوژی', read_time: '۵ دقیقه', cover_url: '', source_url: ''
   });
   
   const [isSaving, setIsSaving] = useState(false);
@@ -52,17 +52,10 @@ export default function AdminPage() {
     setAllArticles(data || []);
   };
 
-  // --- ⚡️ تابع هوشمند تمیز کردن ورودی ---
   const handleParseJson = () => {
     if (!jsonInput.trim()) { alert('JSON خالی است'); return; }
     try {
-        // تلاش برای حذف کاراکترهای نامرئی که کپی/پیست را خراب می‌کنند
-        let clean = jsonInput
-            .replace(/[\u0000-\u0019]+/g, "") // حذف کاراکترهای کنترلی نامرئی
-            .trim();
-
-        const data = JSON.parse(clean);
-        
+        const data = JSON.parse(jsonInput);
         setFormData({
             title: data.title || '',
             slug: data.slug || '',
@@ -70,35 +63,58 @@ export default function AdminPage() {
             content: data.content || '',
             category: data.category || 'تکنولوژی',
             read_time: data.read_time || '۵ دقیقه',
-            cover_url: data.cover_url || ''
+            cover_url: data.cover_url || '',
+            source_url: data.source_url || 'JSON Import' // ذخیره لینک منبع برای جلوگیری از تکرار
         });
-        alert('✅ فرم با موفقیت پر شد!');
+        alert('✅ فرم پر شد!');
         setJsonInput('');
-    } catch (e: any) { 
-        console.error(e);
-        alert('❌ فرمت JSON اشتباه است.\nنکته: مطمئن شوید داخل متن "content" اینتر نزده باشید (باید یک خط باشد).'); 
-    }
+    } catch { alert('❌ فرمت JSON اشتباه است.'); }
   };
 
   const handleSave = async () => {
     if (!formData.title || !formData.content) { alert('عنوان و متن الزامی است.'); return; }
     setIsSaving(true);
+    
     try {
         let finalSlug = formData.slug.trim();
         if (!finalSlug) finalSlug = formData.title.replace(/\s+/g, '-').toLowerCase();
-        finalSlug += '-' + Math.floor(Math.random() * 1000);
+        
+        // اضافه کردن عدد رندوم برای جلوگیری از تکراری شدن Slug
+        finalSlug += '-' + Math.floor(Math.random() * 10000);
 
         const { error } = await supabase.from('articles').insert([{
             ...formData,
             slug: finalSlug,
             published: true,
-            source_url: 'JSON Import'
+            // اگر سورس نداشت، یک مقدار رندوم میگذاریم تا ارور ندهد
+            source_url: formData.source_url || `manual-${Date.now()}` 
         }]);
 
-        if (error) throw error;
-        alert('✅ ذخیره شد!');
-        setFormData({ title: '', slug: '', summary: '', content: '', category: 'تکنولوژی', read_time: '۵ دقیقه', cover_url: '' });
-    } catch (e: any) { alert('خطا: ' + e.message); } finally { setIsSaving(false); }
+        if (error) {
+            // مدیریت خطای تکراری بودن (Unique Constraint)
+            if (error.code === '23505') {
+                if (error.message.includes('source_url')) {
+                    throw new Error('⚠️ این مقاله قبلاً در سایت ثبت شده است! (لینک منبع تکراری)');
+                }
+                if (error.message.includes('slug')) {
+                    throw new Error('⚠️ لینک (Slug) مقاله تکراری است. لطفاً دوباره تلاش کنید.');
+                }
+            }
+            throw error;
+        }
+
+        alert('✅ مقاله با موفقیت ذخیره شد!');
+        
+        // ریست کردن فرم
+        setFormData({ 
+            title: '', slug: '', summary: '', content: '', category: 'تکنولوژی', read_time: '۵ دقیقه', cover_url: '', source_url: '' 
+        });
+
+    } catch (e: any) { 
+        alert(e.message || 'خطای ناشناخته در ذخیره سازی'); 
+    } finally { 
+        setIsSaving(false); 
+    }
   };
 
   const handleChange = (e: any) => {
@@ -144,7 +160,7 @@ export default function AdminPage() {
 
       <Navbar />
 
-      <div className="max-w-6xl mx-auto px-6 mt-32 relative z-10">
+      <div className="max-w-6xl mx-auto px-6 pt-32 pb-20 relative z-10">
         
         {/* هدر */}
         <div className="flex flex-col md:flex-row justify-between items-center mb-12 gap-6">
