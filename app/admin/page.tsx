@@ -3,7 +3,7 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { Lock, FileText, LogOut, Loader2, Save, Trash2, Eye, PenTool, CheckSquare, Square, Type, AlignLeft, Image as ImageIcon, LayoutList, Link as LinkIcon, Wand2, ArrowDown } from 'lucide-react';
+import { Lock, FileText, LogOut, Loader2, Save, Trash2, Eye, CheckSquare, Square, Type, AlignLeft, Image as ImageIcon, LayoutList, Link as LinkIcon, Code, ArrowDown } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import Link from 'next/link';
 
@@ -12,9 +12,8 @@ export default function AdminPage() {
   const [password, setPassword] = useState('');
   const [activeTab, setActiveTab] = useState<'editor' | 'manage'>('editor');
   
-  // ورودی متن خام برای هوش مصنوعی
-  const [rawInput, setRawInput] = useState('');
-  const [isAiProcessing, setIsAiProcessing] = useState(false);
+  // ورودی JSON
+  const [jsonInput, setJsonInput] = useState('');
 
   // فرم اصلی
   const [formData, setFormData] = useState({
@@ -64,66 +63,16 @@ export default function AdminPage() {
     setAllArticles(data || []);
   };
 
-  // --- هوش مصنوعی: پر کردن خودکار فرم ---
-  const handleAutoFill = async () => {
-    if (!rawInput.trim()) { alert('لطفاً متن خام (انگلیسی یا فارسی) را در جعبه بالا وارد کنید.'); return; }
-    
-    setIsAiProcessing(true);
+  // --- ⚡️ بخش مهم: پردازش JSON و پر کردن فرم ---
+  const handleParseJson = () => {
+    if (!jsonInput.trim()) { alert('لطفاً کد JSON را وارد کنید.'); return; }
+
     try {
-        const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-        if(!apiKey) throw new Error('کلید Gemini پیدا نشد.');
-
-        const prompt = `
-            Act as a professional Persian Tech Editor.
-            Task: Convert the Input Text into a structured Persian blog post JSON.
-            
-            Rules:
-            1. Language: Fluent Persian.
-            2. Content format: Markdown.
-            3. Output: JSON Object ONLY.
-
-            JSON Structure:
-            {
-                "title": "Persian Title",
-                "summary": "2-3 lines summary",
-                "content": "# Title\n\nContent in Markdown...",
-                "category": "One of: تکنولوژی, هوش مصنوعی, برنامه‌نویسی, استارتاپ",
-                "read_time": "۵ دقیقه",
-                "cover_url": "",
-                "slug": "english-slug-kebab-case"
-            }
-
-            Input Text:
-            ${rawInput.substring(0, 30000)}
-        `;
-
-        // تلاش اول با مدل Flash
-        let response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-        });
-
-        // اگر ارور داد، تلاش با مدل Pro
-        if (!response.ok) {
-             response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
-            });
-        }
-
-        if (!response.ok) throw new Error('خطای اتصال به گوگل (VPN را چک کنید)');
-
-        const result = await response.json();
-        const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!text) throw new Error('پاسخی دریافت نشد.');
-
-        // تمیز کردن JSON
-        const cleanJson = text.replace(/```json/g, '').replace(/```/g, '').trim();
+        // تمیز کردن ورودی (اگر کاربر اشتباهی متن اضافه کپی کرده باشد)
+        const cleanJson = jsonInput.trim();
         const data = JSON.parse(cleanJson);
 
-        // پر کردن فرم با داده‌های هوش مصنوعی
+        // پر کردن استیت فرم
         setFormData({
             title: data.title || '',
             slug: data.slug || '',
@@ -134,20 +83,18 @@ export default function AdminPage() {
             cover_url: data.cover_url || ''
         });
 
-        setRawInput(''); // پاک کردن ورودی
-        alert('✨ فرم با موفقیت پر شد! حالا بررسی و ذخیره کنید.');
+        alert('✅ فرم با موفقیت پر شد!');
+        setJsonInput(''); // پاک کردن جعبه JSON
 
-    } catch (error: any) {
-        alert('❌ خطا در هوش مصنوعی: ' + error.message);
-    } finally {
-        setIsAiProcessing(false);
+    } catch (error) {
+        alert('❌ فرمت JSON اشتباه است. لطفاً چک کنید.');
     }
   };
 
-  // --- ذخیره مقاله ---
+  // --- ذخیره در دیتابیس ---
   const handleSave = async () => {
     if (!formData.title || !formData.content) {
-        alert('لطفاً حداقل عنوان و متن مقاله را وارد کنید.');
+        alert('عنوان و متن مقاله الزامی است.');
         return;
     }
 
@@ -157,19 +104,20 @@ export default function AdminPage() {
         if (!finalSlug) {
             finalSlug = formData.title.replace(/\s+/g, '-').toLowerCase();
         }
+        // افزودن عدد تصادفی برای جلوگیری از تکرار
         finalSlug += '-' + Math.floor(Math.random() * 1000);
 
         const { error } = await supabase.from('articles').insert([{
             ...formData,
             slug: finalSlug,
             published: true,
-            source_url: 'AI Assisted'
+            source_url: 'JSON Import'
         }]);
 
         if (error) throw error;
 
-        alert('✅ مقاله با موفقیت ذخیره شد!');
-        // ریست کردن فرم
+        alert('✅ مقاله ذخیره و منتشر شد!');
+        // خالی کردن فرم
         setFormData({
             title: '',
             slug: '',
@@ -187,7 +135,6 @@ export default function AdminPage() {
     }
   };
 
-  // هندلر تغییر اینپوت‌ها
   const handleChange = (e: any) => {
       const { name, value } = e.target;
       setFormData(prev => ({ ...prev, [name]: value }));
@@ -224,28 +171,27 @@ export default function AdminPage() {
         </div>
 
         <div className="flex flex-wrap gap-4 mb-8 bg-[#111]/80 backdrop-blur-md p-2 rounded-2xl border border-white/10 sticky top-24 z-40 shadow-xl">
-            <button onClick={() => setActiveTab('editor')} className={`flex-1 px-4 py-3 rounded-xl font-bold transition-all text-sm flex items-center justify-center gap-2 ${activeTab === 'editor' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}><PenTool size={18}/> نوشتن مقاله</button>
+            <button onClick={() => setActiveTab('editor')} className={`flex-1 px-4 py-3 rounded-xl font-bold transition-all text-sm flex items-center justify-center gap-2 ${activeTab === 'editor' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}><Code size={18}/> ایمپورت JSON</button>
             <button onClick={() => setActiveTab('manage')} className={`flex-1 px-4 py-3 rounded-xl font-bold transition-all text-sm flex items-center justify-center gap-2 ${activeTab === 'manage' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}><FileText size={18}/> مدیریت مقالات</button>
         </div>
 
         {activeTab === 'editor' && (
           <div className="animate-in fade-in max-w-4xl mx-auto space-y-8">
             
-            {/* بخش ۱: هوش مصنوعی (پرکننده خودکار) */}
-            <div className="bg-gradient-to-br from-blue-900/10 to-purple-900/10 border border-blue-500/20 p-6 rounded-3xl relative overflow-hidden">
-                <div className="flex items-center gap-2 mb-4 text-blue-300 font-bold"><Wand2 size={20}/> پر کردن خودکار با هوش مصنوعی</div>
+            {/* بخش ۱: ورودی JSON */}
+            <div className="bg-[#1a1a1a] border border-green-500/30 p-6 rounded-3xl relative overflow-hidden shadow-2xl">
+                <div className="flex items-center gap-2 mb-4 text-green-400 font-bold"><Code size={20}/> کد JSON را اینجا وارد کنید</div>
                 <textarea 
-                    value={rawInput}
-                    onChange={(e) => setRawInput(e.target.value)}
-                    placeholder="متن مقاله انگلیسی یا خام را اینجا پیست کنید تا هوش مصنوعی فرم پایین را برایتان پر کند..."
-                    className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-sm min-h-[100px] mb-4 focus:outline-none focus:border-blue-500 transition-all"
+                    value={jsonInput}
+                    onChange={(e) => setJsonInput(e.target.value)}
+                    placeholder='{ "title": "...", "content": "..." }'
+                    className="w-full bg-black/40 border border-white/10 rounded-xl p-4 text-sm font-mono text-green-300 min-h-[150px] mb-4 focus:outline-none focus:border-green-500 transition-all dir-ltr text-left"
                 />
                 <button 
-                    onClick={handleAutoFill}
-                    disabled={isAiProcessing}
-                    className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-xl font-bold text-sm flex items-center gap-2 shadow-lg shadow-blue-900/20 disabled:opacity-50"
+                    onClick={handleParseJson}
+                    className="bg-green-600 hover:bg-green-500 text-white px-6 py-3 rounded-xl font-bold text-sm flex items-center gap-2 shadow-lg shadow-green-900/20 w-full justify-center"
                 >
-                    {isAiProcessing ? <><Loader2 className="animate-spin" size={16}/> در حال پردازش...</> : <>✨ پردازش و پر کردن فرم <ArrowDown size={16}/></>}
+                    جایگذاری اطلاعات در فرم پایین <ArrowDown size={18}/>
                 </button>
             </div>
 
@@ -293,7 +239,7 @@ export default function AdminPage() {
               <button 
                 onClick={handleSave} 
                 disabled={isSaving}
-                className="w-full bg-green-600 hover:bg-green-500 text-white py-4 rounded-2xl font-bold text-lg shadow-lg shadow-green-900/40 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 transition-all"
+                className="w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-2xl font-bold text-lg shadow-lg shadow-blue-900/40 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 transition-all"
               >
                 {isSaving ? <><Loader2 className="animate-spin"/> در حال ذخیره...</> : <><Save/> انتشار نهایی</>}
               </button>
