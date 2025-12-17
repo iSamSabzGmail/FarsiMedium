@@ -104,22 +104,21 @@ export default function AdminPage() {
     if (!error) { setAllArticles(allArticles.filter(a => !selectedIds.includes(a.id))); setSelectedIds([]); alert('🗑️ پاک شدند!'); }
   };
 
-  // --- صفحه لاگین (هماهنگ با تم سایت) ---
+  // --- لاگین ---
   if (!isAuthenticated) return (
     <div className="min-h-screen flex items-center justify-center p-4 font-vazir relative overflow-hidden bg-[#050505]" dir="rtl">
-        {/* نورهای پس‌زمینه دقیقاً مثل صفحه اصلی */}
         <div className="fixed inset-0 overflow-hidden pointer-events-none">
-            <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-[1000px] h-[600px] bg-green-600/15 blur-[130px] rounded-full opacity-60 mix-blend-screen animate-pulse" />
-            <div className="absolute bottom-[-10%] right-[-10%] w-[800px] h-[600px] bg-blue-600/10 blur-[150px] rounded-full opacity-40" />
+            <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-green-600/20 blur-[150px] rounded-full opacity-60" />
+            <div className="absolute bottom-0 right-0 w-[500px] h-[500px] bg-blue-600/10 blur-[150px] rounded-full opacity-40" />
         </div>
         
-        <div className="glass p-10 rounded-[2.5rem] text-center space-y-8 max-w-md w-full shadow-2xl relative z-10 border border-white/10 backdrop-blur-xl">
-            <div className="w-24 h-24 bg-green-500/10 rounded-full flex items-center justify-center mx-auto text-green-400 mb-6 border border-green-500/20 shadow-[0_0_30px_rgba(34,197,94,0.2)]">
-                <Lock size={36}/>
+        <div className="glass p-10 rounded-[2.5rem] text-center space-y-8 max-w-md w-full shadow-2xl relative z-10 border border-white/5 backdrop-blur-xl">
+            <div className="w-20 h-20 bg-green-500/10 rounded-full flex items-center justify-center mx-auto text-green-400 mb-6 border border-green-500/20">
+                <Lock size={32}/>
             </div>
-            <h2 className="text-white font-black text-3xl tracking-tight">ورود مدیریت</h2>
-            <input type="password" placeholder="••••••••" value={password} onChange={e=>setPassword(e.target.value)} className="w-full bg-black/40 p-4 rounded-2xl text-white text-center border border-white/10 outline-none focus:border-green-500 focus:bg-black/60 transition-all text-lg placeholder-gray-600"/>
-            <button onClick={checkPassword} className="w-full bg-green-600 hover:bg-green-500 text-black py-4 rounded-2xl font-bold text-lg transition-all shadow-lg hover:scale-[1.02]">ورود به پنل</button>
+            <h2 className="text-white font-black text-3xl">ورود مدیریت</h2>
+            <input type="password" placeholder="••••••••" value={password} onChange={e=>setPassword(e.target.value)} className="w-full bg-white/5 p-4 rounded-2xl text-white text-center border border-white/5 outline-none focus:border-green-500 focus:bg-white/10 transition-all text-lg placeholder-gray-600"/>
+            <button onClick={checkPassword} className="w-full bg-green-600 hover:bg-green-500 text-black py-4 rounded-2xl font-bold text-lg transition-all shadow-lg hover:shadow-green-900/40">ورود</button>
         </div>
     </div>
   );
@@ -127,125 +126,130 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen text-white font-vazir pb-20 relative bg-[#050505] selection:bg-green-500/30 selection:text-green-200" dir="rtl">
       
-      {/* --- نورپردازی سراسری (کپی شده از صفحه اصلی) --- */}
+      {/* نورپردازی پس‌زمینه */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
           <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-[1000px] h-[600px] bg-green-600/15 blur-[130px] rounded-full opacity-60 mix-blend-screen animate-pulse" />
           <div className="absolute bottom-[-10%] right-[-10%] w-[800px] h-[600px] bg-blue-600/10 blur-[150px] rounded-full opacity-40" />
-          <div className="absolute top-[40%] left-[-20%] w-[600px] h-[600px] bg-emerald-500/10 blur-[150px] rounded-full opacity-30" />
       </div>
 
       <Navbar />
 
       <div className="max-w-6xl mx-auto px-6 mt-32 relative z-10">
         
-        {/* هدر */}
-        <div className="flex flex-col md:flex-row justify-between items-center mb-12 gap-6">
+        {/* هدر ساده و تمیز */}
+        <div className="flex flex-col md:flex-row justify-between items-center mb-10 gap-6">
             <div>
-                <h1 className="text-4xl font-black text-white drop-shadow-lg mb-2">داشبورد مدیریت</h1>
-                <p className="text-gray-400 text-sm font-light">کنترل کامل بر محتوای وب‌سایت</p>
+                <h1 className="text-4xl font-black text-white drop-shadow-lg mb-2">داشبورد</h1>
+                <p className="text-gray-400 text-sm font-light opacity-70">خوش آمدید، ادمین عزیز</p>
             </div>
-            <button onClick={handleLogout} className="glass px-6 py-3 rounded-2xl text-red-400 hover:text-white hover:bg-red-500/20 transition-all text-sm font-bold flex items-center gap-2 border-red-500/10">
-                <LogOut size={18}/> خروج از حساب
+            <button onClick={handleLogout} className="px-6 py-2.5 rounded-2xl text-red-400 hover:text-white hover:bg-red-500/10 transition-all text-sm font-bold flex items-center gap-2 border border-white/5 hover:border-red-500/20">
+                <LogOut size={18}/> خروج
             </button>
         </div>
 
-        {/* منوی تب‌ها (شیشه‌ای و یکدست) */}
-        <div className="flex flex-wrap gap-4 mb-10 glass p-2 rounded-[1.5rem] shadow-xl border border-white/5">
+        {/* منوی تب‌ها (بدون کادر مزاحم) */}
+        <div className="flex gap-2 mb-12 p-1 bg-white/5 rounded-2xl w-fit mx-auto md:mx-0 backdrop-blur-sm border border-white/5">
             <button 
                 onClick={() => setActiveTab('editor')} 
-                className={`flex-1 px-6 py-4 rounded-2xl font-bold transition-all text-sm flex items-center justify-center gap-3 ${
+                className={`px-6 py-3 rounded-xl font-bold transition-all text-sm flex items-center gap-2 ${
                     activeTab === 'editor' 
-                    ? 'bg-green-600 text-black shadow-[0_0_20px_-5px_rgba(34,197,94,0.5)]' 
+                    ? 'bg-green-600 text-black shadow-lg shadow-green-900/20' 
                     : 'text-gray-400 hover:text-white hover:bg-white/5'
                 }`}
             >
-                <Code size={20}/> ایمپورت و ویرایش
+                <Code size={18}/> ایمپورت
             </button>
             <button 
                 onClick={() => setActiveTab('manage')} 
-                className={`flex-1 px-6 py-4 rounded-2xl font-bold transition-all text-sm flex items-center justify-center gap-3 ${
+                className={`px-6 py-3 rounded-xl font-bold transition-all text-sm flex items-center gap-2 ${
                     activeTab === 'manage' 
-                    ? 'bg-green-600 text-black shadow-[0_0_20px_-5px_rgba(34,197,94,0.5)]' 
+                    ? 'bg-green-600 text-black shadow-lg shadow-green-900/20' 
                     : 'text-gray-400 hover:text-white hover:bg-white/5'
                 }`}
             >
-                <Settings size={20}/> مدیریت مقالات
+                <Settings size={18}/> مدیریت
             </button>
         </div>
 
         {/* محتوا */}
         {activeTab === 'editor' && (
-          <div className="animate-in fade-in max-w-5xl mx-auto space-y-10">
+          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-5xl mx-auto space-y-8">
             
             {/* باکس JSON */}
-            <div className="glass p-8 rounded-[2.5rem] relative overflow-hidden shadow-2xl border border-white/10 group">
-                <div className="flex items-center gap-3 mb-6 text-green-400 font-bold text-lg border-b border-white/5 pb-4">
-                    <Code size={24}/> <h3>JSON ورودی</h3>
+            <div className="glass p-1 rounded-[2.5rem] border border-white/5 shadow-2xl relative overflow-hidden group">
+                <div className="bg-[#0a0a0a]/80 backdrop-blur-xl p-8 rounded-[2.3rem]">
+                    <div className="flex items-center justify-between mb-6 border-b border-white/5 pb-4">
+                        <div className="flex items-center gap-3 text-green-400 font-bold">
+                            <div className="p-2 bg-green-500/10 rounded-lg"><Code size={20}/></div>
+                            <h3>کد JSON</h3>
+                        </div>
+                        <button 
+                            onClick={handleParseJson} 
+                            className="text-xs font-bold bg-white/5 hover:bg-green-500/20 hover:text-green-400 text-gray-400 px-4 py-2 rounded-lg transition-colors"
+                        >
+                            اعمال تغییرات <ArrowDown size={14} className="inline"/>
+                        </button>
+                    </div>
+                    <textarea 
+                        value={jsonInput} 
+                        onChange={(e) => setJsonInput(e.target.value)} 
+                        placeholder='{ "title": "...", "content": "..." }' 
+                        className="w-full bg-black/30 border border-white/5 rounded-2xl p-6 text-sm font-mono text-green-300 min-h-[120px] focus:outline-none focus:border-green-500/30 transition-all dir-ltr text-left placeholder-gray-700 leading-relaxed resize-y"
+                    />
                 </div>
-                <textarea 
-                    value={jsonInput} 
-                    onChange={(e) => setJsonInput(e.target.value)} 
-                    placeholder='{ "title": "...", "content": "..." }' 
-                    className="w-full bg-black/40 border border-white/10 rounded-2xl p-6 text-sm font-mono text-green-300 min-h-[150px] mb-6 focus:outline-none focus:border-green-500/50 transition-all dir-ltr text-left placeholder-gray-600 leading-relaxed"
-                />
-                <button 
-                    onClick={handleParseJson} 
-                    className="bg-green-600 hover:bg-green-500 text-black px-8 py-4 rounded-2xl font-bold text-sm flex items-center gap-2 shadow-lg w-full justify-center hover:scale-[1.01] transition-transform active:scale-95"
-                >
-                    جایگذاری اطلاعات در فرم <ArrowDown size={20}/>
-                </button>
             </div>
 
             {/* فرم اصلی */}
-            <div className="glass p-8 md:p-12 rounded-[2.5rem] space-y-8 border border-white/10 relative">
-              <div className="absolute top-0 right-0 w-full h-full bg-gradient-to-b from-white/5 to-transparent opacity-30 pointer-events-none rounded-[2.5rem]" />
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 relative z-10">
-                  <div className="space-y-3">
-                      <label className="text-sm text-gray-400 flex items-center gap-2 font-bold px-1"><Type size={16}/> عنوان مقاله</label>
-                      <input name="title" value={formData.title} onChange={handleChange} className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 focus:border-green-500 outline-none transition-colors text-white placeholder-gray-600 focus:bg-black/60"/>
-                  </div>
-                  <div className="space-y-3">
-                      <label className="text-sm text-gray-400 flex items-center gap-2 font-bold px-1"><LayoutList size={16}/> دسته‌بندی</label>
-                      <select name="category" value={formData.category} onChange={handleChange} className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 focus:border-green-500 outline-none text-gray-300 cursor-pointer appearance-none">
-                          <option>تکنولوژی</option>
-                          <option>هک و امنیت</option>
-                          <option>هوش مصنوعی</option>
-                          <option>برنامه‌نویسی</option>
-                          <option>استارتاپ</option>
-                          <option>توسعه فردی</option>
-                      </select>
-                  </div>
-              </div>
+            <div className="glass p-1 rounded-[2.5rem] border border-white/5 shadow-2xl">
+              <div className="bg-[#0a0a0a]/80 backdrop-blur-xl p-8 md:p-12 rounded-[2.3rem] space-y-8">
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="space-y-3">
+                        <label className="text-xs text-gray-500 font-bold px-1 uppercase tracking-wider">عنوان مقاله</label>
+                        <input name="title" value={formData.title} onChange={handleChange} className="w-full bg-white/5 border border-white/5 rounded-2xl p-4 focus:border-green-500/50 outline-none transition-colors text-white placeholder-gray-700 focus:bg-black/40"/>
+                    </div>
+                    <div className="space-y-3">
+                        <label className="text-xs text-gray-500 font-bold px-1 uppercase tracking-wider">دسته‌بندی</label>
+                        <select name="category" value={formData.category} onChange={handleChange} className="w-full bg-white/5 border border-white/5 rounded-2xl p-4 focus:border-green-500/50 outline-none text-gray-300 cursor-pointer appearance-none focus:bg-black/40">
+                            <option>تکنولوژی</option>
+                            <option>هک و امنیت</option>
+                            <option>هوش مصنوعی</option>
+                            <option>برنامه‌نویسی</option>
+                            <option>استارتاپ</option>
+                            <option>توسعه فردی</option>
+                        </select>
+                    </div>
+                </div>
 
-              <div className="space-y-3 relative z-10">
-                  <label className="text-sm text-gray-400 flex items-center gap-2 font-bold px-1"><AlignLeft size={16}/> خلاصه کوتاه</label>
-                  <textarea name="summary" value={formData.summary} onChange={handleChange} className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 focus:border-green-500 outline-none h-32 resize-none text-white placeholder-gray-600 focus:bg-black/60"/>
-              </div>
+                <div className="space-y-3">
+                    <label className="text-xs text-gray-500 font-bold px-1 uppercase tracking-wider">خلاصه کوتاه</label>
+                    <textarea name="summary" value={formData.summary} onChange={handleChange} className="w-full bg-white/5 border border-white/5 rounded-2xl p-4 focus:border-green-500/50 outline-none h-28 resize-none text-white placeholder-gray-700 focus:bg-black/40"/>
+                </div>
 
-              <div className="space-y-3 relative z-10">
-                  <label className="text-sm text-gray-400 flex items-center gap-2 font-bold px-1"><FileText size={16}/> متن اصلی (Markdown)</label>
-                  <textarea name="content" value={formData.content} onChange={handleChange} className="w-full bg-black/40 border border-white/10 rounded-2xl p-6 focus:border-green-500 outline-none min-h-[500px] font-mono text-sm leading-relaxed text-gray-300 placeholder-gray-600 focus:bg-black/60"/>
-              </div>
+                <div className="space-y-3">
+                    <label className="text-xs text-gray-500 font-bold px-1 uppercase tracking-wider">متن اصلی (Markdown)</label>
+                    <textarea name="content" value={formData.content} onChange={handleChange} className="w-full bg-white/5 border border-white/5 rounded-2xl p-6 focus:border-green-500/50 outline-none min-h-[400px] font-mono text-sm leading-relaxed text-gray-300 placeholder-gray-700 focus:bg-black/40"/>
+                </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 relative z-10">
-                  <div className="space-y-3">
-                      <label className="text-sm text-gray-400 flex items-center gap-2 font-bold px-1"><ImageIcon size={16}/> لینک عکس کاور</label>
-                      <input name="cover_url" value={formData.cover_url} onChange={handleChange} className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 focus:border-green-500 outline-none dir-ltr text-left text-white placeholder-gray-600 focus:bg-black/60"/>
-                  </div>
-                  <div className="space-y-3">
-                      <label className="text-sm text-gray-400 flex items-center gap-2 font-bold px-1"><LinkIcon size={16}/> اسلاگ (لینک)</label>
-                      <input name="slug" value={formData.slug} onChange={handleChange} className="w-full bg-black/40 border border-white/10 rounded-2xl p-4 focus:border-green-500 outline-none dir-ltr text-left text-white placeholder-gray-600 focus:bg-black/60"/>
-                  </div>
-              </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div className="space-y-3">
+                        <label className="text-xs text-gray-500 font-bold px-1 uppercase tracking-wider">لینک عکس کاور</label>
+                        <input name="cover_url" value={formData.cover_url} onChange={handleChange} className="w-full bg-white/5 border border-white/5 rounded-2xl p-4 focus:border-green-500/50 outline-none dir-ltr text-left text-white placeholder-gray-700 focus:bg-black/40"/>
+                    </div>
+                    <div className="space-y-3">
+                        <label className="text-xs text-gray-500 font-bold px-1 uppercase tracking-wider">اسلاگ (لینک)</label>
+                        <input name="slug" value={formData.slug} onChange={handleChange} className="w-full bg-white/5 border border-white/5 rounded-2xl p-4 focus:border-green-500/50 outline-none dir-ltr text-left text-white placeholder-gray-700 focus:bg-black/40"/>
+                    </div>
+                </div>
 
-              <button 
-                onClick={handleSave} 
-                disabled={isSaving} 
-                className="w-full bg-green-600 hover:bg-green-500 text-black py-5 rounded-2xl font-bold text-lg shadow-[0_0_30px_-5px_rgba(34,197,94,0.5)] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 transition-all hover:scale-[1.01] hover:shadow-[0_0_40px_-5px_rgba(34,197,94,0.7)] relative z-10"
-              >
-                {isSaving ? <><Loader2 className="animate-spin"/> در حال ذخیره...</> : <><Save/> انتشار نهایی</>}
-              </button>
+                <button 
+                    onClick={handleSave} 
+                    disabled={isSaving} 
+                    className="w-full bg-green-600 hover:bg-green-500 text-black py-5 rounded-2xl font-bold text-lg shadow-lg hover:shadow-green-500/30 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 transition-all transform hover:scale-[1.01]"
+                >
+                    {isSaving ? <><Loader2 className="animate-spin"/> در حال انتشار...</> : <><Save/> انتشار نهایی</>}
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -253,25 +257,25 @@ export default function AdminPage() {
         {/* تب ۲: مدیریت */}
         {activeTab === 'manage' && (
           <div className="space-y-6 animate-in fade-in max-w-5xl mx-auto">
-             <div className="flex justify-between items-center glass p-6 rounded-[1.5rem] text-sm border border-white/10">
+             <div className="flex justify-between items-center bg-white/5 backdrop-blur-md p-6 rounded-[2rem] text-sm border border-white/5 shadow-xl">
                 <div className="flex items-center gap-4">
                     <button onClick={toggleSelectAll} className="flex items-center gap-2 text-green-400 hover:text-white font-bold transition-colors">
                         {selectedIds.length === allArticles.length && allArticles.length > 0 ? <CheckSquare size={22}/> : <Square size={22}/>} 
                         انتخاب همه
                     </button>
                     <span className="text-gray-600 text-xl">|</span>
-                    <span className="text-white font-bold">{selectedIds.length} مقاله انتخاب شده</span>
+                    <span className="text-white font-bold">{selectedIds.length} مقاله</span>
                 </div>
                 {selectedIds.length > 0 && (
-                    <button onClick={deleteSelected} className="flex items-center gap-2 bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-xl font-bold transition-colors shadow-lg shadow-red-900/40">
-                        <Trash2 size={18}/> حذف
+                    <button onClick={deleteSelected} className="flex items-center gap-2 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white px-6 py-3 rounded-xl font-bold transition-all border border-red-500/20">
+                        <Trash2 size={18}/> حذف انتخاب شده‌ها
                     </button>
                 )}
              </div>
 
              <div className="grid gap-4">
                 {allArticles.map(article => (
-                <div key={article.id} className={`glass p-6 rounded-[2rem] flex items-center justify-between group transition-all hover:border-green-500/30 border border-white/5 ${selectedIds.includes(article.id) ? 'border-green-500 bg-green-900/10' : ''}`}>
+                <div key={article.id} className={`bg-[#0a0a0a]/60 backdrop-blur-md p-6 rounded-[2rem] flex items-center justify-between group transition-all border border-white/5 hover:border-green-500/30 ${selectedIds.includes(article.id) ? 'border-green-500/50 bg-green-900/10' : ''}`}>
                     <div className="flex items-center gap-6 overflow-hidden">
                         <button onClick={() => toggleSelect(article.id)} className={`text-gray-600 hover:text-green-400 transition-colors ${selectedIds.includes(article.id) ? 'text-green-500' : ''}`}>
                             {selectedIds.includes(article.id) ? <CheckSquare size={26}/> : <Square size={26}/>}
@@ -280,12 +284,12 @@ export default function AdminPage() {
                             <h3 className="font-bold text-white text-lg truncate max-w-md mb-2">{article.title}</h3>
                             <div className="flex gap-4 text-xs text-gray-400">
                                 <span>{new Date(article.created_at).toLocaleDateString('fa-IR')}</span>
-                                <span className="bg-white/10 px-3 py-0.5 rounded-full border border-white/5 text-gray-300">{article.category}</span>
+                                <span className="bg-white/5 px-3 py-0.5 rounded-full border border-white/5 text-gray-300">{article.category}</span>
                             </div>
                         </div>
                     </div>
                     <div className="flex gap-3">
-                        <Link href={`/article?id=${article.slug || article.id}`} target="_blank" className="p-3 bg-white/5 rounded-2xl hover:bg-green-500 hover:text-black text-green-400 transition-all border border-white/5 hover:border-green-500" title="مشاهده">
+                        <Link href={`/article?id=${article.slug || article.id}`} target="_blank" className="p-3 bg-white/5 rounded-2xl hover:bg-green-500 hover:text-black text-green-400 transition-all border border-white/5 hover:border-green-500 shadow-lg" title="مشاهده">
                             <Eye size={22}/>
                         </Link>
                     </div>
