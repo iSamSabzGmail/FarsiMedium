@@ -14,7 +14,7 @@ export default function AdminPage() {
   
   const [jsonInput, setJsonInput] = useState('');
   const [formData, setFormData] = useState({
-    title: '', slug: '', summary: '', content: '', category: 'تکنولوژی', read_time: '۵ دقیقه', cover_url: '', source_url: ''
+    title: '', slug: '', summary: '', content: '', category: 'تکنولوژی', read_time: '۵ دقیقه', cover_url: ''
   });
   
   const [isSaving, setIsSaving] = useState(false);
@@ -52,10 +52,27 @@ export default function AdminPage() {
     setAllArticles(data || []);
   };
 
+  // --- ⚡️ پارسر هوشمند و ضدضربه JSON ---
   const handleParseJson = () => {
     if (!jsonInput.trim()) { alert('JSON خالی است'); return; }
+    
     try {
-        const data = JSON.parse(jsonInput);
+        let clean = jsonInput.trim();
+
+        // 1. حذف تگ‌های مارک‌داون احتمالی
+        clean = clean.replace(/```json/g, '').replace(/```/g, '');
+
+        // 2. پیدا کردن اولین { و آخرین } (حذف متن‌های اضافی قبل و بعد)
+        const firstBrace = clean.indexOf('{');
+        const lastBrace = clean.lastIndexOf('}');
+        
+        if (firstBrace !== -1 && lastBrace !== -1) {
+            clean = clean.substring(firstBrace, lastBrace + 1);
+        }
+
+        // 3. تلاش برای پارس کردن
+        const data = JSON.parse(clean);
+        
         setFormData({
             title: data.title || '',
             slug: data.slug || '',
@@ -63,58 +80,37 @@ export default function AdminPage() {
             content: data.content || '',
             category: data.category || 'تکنولوژی',
             read_time: data.read_time || '۵ دقیقه',
-            cover_url: data.cover_url || '',
-            source_url: data.source_url || 'JSON Import' // ذخیره لینک منبع برای جلوگیری از تکرار
+            cover_url: data.cover_url || ''
         });
-        alert('✅ فرم پر شد!');
-        setJsonInput('');
-    } catch { alert('❌ فرمت JSON اشتباه است.'); }
+        
+        alert('✅ فرم با موفقیت پر شد!');
+        setJsonInput(''); // پاک کردن ورودی برای تمیزی
+
+    } catch (e: any) { 
+        console.error("JSON Error:", e);
+        alert(`❌ فرمت JSON اشتباه است.\n\nدلیل احتمالی: داخل متن "content" دکمه اینتر زده شده است. تمام متن باید در یک خط باشد (با \\n جدا شود).`); 
+    }
   };
 
   const handleSave = async () => {
     if (!formData.title || !formData.content) { alert('عنوان و متن الزامی است.'); return; }
     setIsSaving(true);
-    
     try {
         let finalSlug = formData.slug.trim();
         if (!finalSlug) finalSlug = formData.title.replace(/\s+/g, '-').toLowerCase();
-        
-        // اضافه کردن عدد رندوم برای جلوگیری از تکراری شدن Slug
-        finalSlug += '-' + Math.floor(Math.random() * 10000);
+        finalSlug += '-' + Math.floor(Math.random() * 1000);
 
         const { error } = await supabase.from('articles').insert([{
             ...formData,
             slug: finalSlug,
             published: true,
-            // اگر سورس نداشت، یک مقدار رندوم میگذاریم تا ارور ندهد
-            source_url: formData.source_url || `manual-${Date.now()}` 
+            source_url: 'JSON Import'
         }]);
 
-        if (error) {
-            // مدیریت خطای تکراری بودن (Unique Constraint)
-            if (error.code === '23505') {
-                if (error.message.includes('source_url')) {
-                    throw new Error('⚠️ این مقاله قبلاً در سایت ثبت شده است! (لینک منبع تکراری)');
-                }
-                if (error.message.includes('slug')) {
-                    throw new Error('⚠️ لینک (Slug) مقاله تکراری است. لطفاً دوباره تلاش کنید.');
-                }
-            }
-            throw error;
-        }
-
-        alert('✅ مقاله با موفقیت ذخیره شد!');
-        
-        // ریست کردن فرم
-        setFormData({ 
-            title: '', slug: '', summary: '', content: '', category: 'تکنولوژی', read_time: '۵ دقیقه', cover_url: '', source_url: '' 
-        });
-
-    } catch (e: any) { 
-        alert(e.message || 'خطای ناشناخته در ذخیره سازی'); 
-    } finally { 
-        setIsSaving(false); 
-    }
+        if (error) throw error;
+        alert('✅ ذخیره شد!');
+        setFormData({ title: '', slug: '', summary: '', content: '', category: 'تکنولوژی', read_time: '۵ دقیقه', cover_url: '' });
+    } catch (e: any) { alert('خطا: ' + e.message); } finally { setIsSaving(false); }
   };
 
   const handleChange = (e: any) => {
@@ -130,7 +126,6 @@ export default function AdminPage() {
     if (!error) { setAllArticles(allArticles.filter(a => !selectedIds.includes(a.id))); setSelectedIds([]); alert('🗑️ پاک شدند!'); }
   };
 
-  // --- صفحه لاگین ---
   if (!isAuthenticated) return (
     <div className="min-h-screen flex items-center justify-center p-4 font-vazir relative overflow-hidden bg-[#050505]" dir="rtl">
         <div className="fixed inset-0 overflow-hidden pointer-events-none">
@@ -152,7 +147,6 @@ export default function AdminPage() {
   return (
     <div className="min-h-screen text-white font-vazir pb-20 relative bg-[#050505] selection:bg-green-500/30 selection:text-green-200" dir="rtl">
       
-      {/* نورپردازی پس‌زمینه */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
           <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-[1000px] h-[600px] bg-green-600/15 blur-[130px] rounded-full opacity-60 mix-blend-screen animate-pulse" />
           <div className="absolute bottom-[-10%] right-[-10%] w-[800px] h-[600px] bg-blue-600/10 blur-[150px] rounded-full opacity-40" />
@@ -162,7 +156,6 @@ export default function AdminPage() {
 
       <div className="max-w-6xl mx-auto px-6 pt-32 pb-20 relative z-10">
         
-        {/* هدر */}
         <div className="flex flex-col md:flex-row justify-between items-center mb-12 gap-6">
             <div className="text-center md:text-right">
                 <h1 className="text-4xl font-black text-white drop-shadow-lg mb-2">داشبورد</h1>
@@ -173,7 +166,6 @@ export default function AdminPage() {
             </button>
         </div>
 
-        {/* تب‌ها */}
         <div className="flex justify-center md:justify-start gap-4 mb-12">
             <button 
                 onClick={() => setActiveTab('editor')} 
@@ -197,11 +189,9 @@ export default function AdminPage() {
             </button>
         </div>
 
-        {/* محتوا: ادیتور */}
         {activeTab === 'editor' && (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-5xl mx-auto space-y-10">
             
-            {/* باکس JSON */}
             <div className="glass p-8 rounded-[2.5rem] relative overflow-hidden shadow-2xl border border-white/5 group">
                 <div className="flex items-center justify-between mb-6 border-b border-white/5 pb-4">
                     <div className="flex items-center gap-3 text-green-400 font-bold">
@@ -219,7 +209,6 @@ export default function AdminPage() {
                 />
             </div>
 
-            {/* فرم اصلی */}
             <div className="glass p-8 md:p-12 rounded-[2.5rem] space-y-8 border border-white/5">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                     <div className="space-y-3">
@@ -271,7 +260,6 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* محتوا: مدیریت */}
         {activeTab === 'manage' && (
           <div className="space-y-6 animate-in fade-in max-w-5xl mx-auto">
              <div className="flex justify-between items-center glass p-6 rounded-[2rem] text-sm border border-white/5 shadow-xl">
