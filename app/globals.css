@@ -8,52 +8,49 @@
 
 body {
   color: #ededed;
-  background-color: #050505; /* سیاه خالص */
+  /* پس‌زمینه دیگر مشکی مطلق نیست، یک گرادینت خیلی محو دارد */
+  background: radial-gradient(circle at 50% 0%, #111 0%, #020202 100%);
+  min-height: 100vh;
   overflow-x: hidden;
 }
 
-/* اسکرول بار مدرن و باریک */
-::-webkit-scrollbar {
-  width: 6px;
-  background: #050505;
-}
-::-webkit-scrollbar-thumb {
-  background: #333;
-  border-radius: 10px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #22c55e;
-}
+/* اسکرول بار */
+::-webkit-scrollbar { width: 6px; background: #050505; }
+::-webkit-scrollbar-thumb { background: #333; border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: #22c55e; }
 
 /* استایل کدها */
 pre {
   direction: ltr;
   text-align: left;
-  background: #0f0f0f !important; /* کمی روشن تر از پس زمینه */
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: rgba(0, 0, 0, 0.5) !important; /* نیمه شفاف */
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
   border-radius: 1rem;
   padding: 0 !important;
   margin: 2rem 0;
-  box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.8);
 }
-
 pre > code {
   font-family: 'Fira Code', monospace !important;
   font-size: 0.95rem !important;
-  line-height: 1.8 !important;
   padding: 1.5rem !important;
   display: block;
 }
 
-/* افکت شیشه‌ای واقعی (Vanilla Style) */
+/* --- افکت شیشه‌ای پیشرفته (Vanilla Style) --- */
 .glass {
-  background: rgba(15, 15, 15, 0.6);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  /* پس‌زمینه خیلی شفاف‌تر شد (0.3) تا نور زیرش معلوم شود */
+  background: rgba(20, 20, 20, 0.3);
+  /* بلور قوی برای مات کردن نورهای زیر */
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  /* حاشیه سفید خیلی محو برای تمیز شدن لبه‌ها */
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
 }
 
 .glass:hover {
-  border-color: rgba(34, 197, 94, 0.3);
-  background: rgba(15, 15, 15, 0.8);
+  background: rgba(30, 30, 30, 0.4);
+  border-color: rgba(34, 197, 94, 0.3); /* سبز موقع هاور */
+  box-shadow: 0 0 20px rgba(34, 197, 94, 0.1);
 }
