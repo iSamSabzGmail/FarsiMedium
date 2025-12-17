@@ -14,7 +14,7 @@ export default function AdminPage() {
   
   const [jsonInput, setJsonInput] = useState('');
   const [formData, setFormData] = useState({
-    title: '', slug: '', summary: '', content: '', category: 'تکنولوژی', read_time: '۵ دقیقه', cover_url: ''
+    title: '', slug: '', summary: '', content: '', category: 'تکنولوژی', read_time: '۵ دقیقه', cover_url: '', source_url: ''
   });
   
   const [isSaving, setIsSaving] = useState(false);
@@ -52,23 +52,18 @@ export default function AdminPage() {
     setAllArticles(data || []);
   };
 
-  // --- ⚡️ تابع تعمیرکار خودکار JSON ---
   const handleParseJson = () => {
     if (!jsonInput.trim()) { alert('JSON خالی است'); return; }
-    
     try {
         let clean = jsonInput.trim();
-
         // حذف تگ‌های مارک‌داون احتمالی
         clean = clean.replace(/```json/g, '').replace(/```/g, '');
-
-        // ⚡️ جادوی اصلی: تعمیر اینترهای وسط متن
-        // این کد می‌گردد و اینترهای واقعی را به \n تبدیل می‌کند تا JSON خراب نشود
+        
+        // تعمیر اینترهای وسط متن (اگر وجود داشته باشد)
         clean = clean.replace(/"((?:[^"\\]|\\.)*)"/g, function(match) {
             return match.replace(/\n/g, '\\n').replace(/\r/g, '');
         });
 
-        // حالا پارس می‌کنیم
         const data = JSON.parse(clean);
         
         setFormData({
@@ -78,37 +73,61 @@ export default function AdminPage() {
             content: data.content || '',
             category: data.category || 'تکنولوژی',
             read_time: data.read_time || '۵ دقیقه',
-            cover_url: data.cover_url || ''
+            cover_url: data.cover_url || '',
+            source_url: data.source_url || ''
         });
-        
-        alert('✅ فرم با موفقیت پر شد!');
-        setJsonInput(''); // پاک کردن ورودی
-
-    } catch (e: any) { 
-        console.error("JSON Error:", e);
-        alert(`❌ فرمت JSON هنوز مشکل دارد. لطفاً از کد فشرده (تک خطی) استفاده کنید.`); 
-    }
+        alert('✅ فرم پر شد!');
+        setJsonInput('');
+    } catch (e) { alert('❌ فرمت JSON اشتباه است. لطفاً از کد تک‌خطی استفاده کنید.'); }
   };
 
   const handleSave = async () => {
     if (!formData.title || !formData.content) { alert('عنوان و متن الزامی است.'); return; }
     setIsSaving(true);
+    
     try {
+        // ۱. ساخت اسلاگ یکتا
         let finalSlug = formData.slug.trim();
         if (!finalSlug) finalSlug = formData.title.replace(/\s+/g, '-').toLowerCase();
-        finalSlug += '-' + Math.floor(Math.random() * 1000);
+        // اضافه کردن عدد رندوم برای جلوگیری از تکرار اسلاگ
+        finalSlug += '-' + Math.floor(Math.random() * 100000);
+
+        // ۲. ساخت لینک منبع یکتا (رفع ارور Duplicate Key)
+        // اگر لینک منبع داشت، یک پارامتر رندوم به ته آن اضافه می‌کنیم تا برای دیتابیس جدید به نظر برسد
+        let finalSourceUrl = formData.source_url;
+        if (finalSourceUrl) {
+            const separator = finalSourceUrl.includes('?') ? '&' : '?';
+            finalSourceUrl = `${finalSourceUrl}${separator}uid=${Date.now()}`;
+        } else {
+            finalSourceUrl = `manual-entry-${Date.now()}`;
+        }
 
         const { error } = await supabase.from('articles').insert([{
-            ...formData,
+            title: formData.title,
+            summary: formData.summary,
+            content: formData.content,
+            category: formData.category,
+            read_time: formData.read_time,
+            cover_url: formData.cover_url,
             slug: finalSlug,
-            published: true,
-            source_url: 'JSON Import'
+            source_url: finalSourceUrl, // لینک منبع یونیک شده
+            published: true
         }]);
 
-        if (error) throw error;
+        if (error) {
+            console.error('Supabase Error:', error);
+            throw new Error(error.message);
+        }
+
         alert('✅ ذخیره شد!');
-        setFormData({ title: '', slug: '', summary: '', content: '', category: 'تکنولوژی', read_time: '۵ دقیقه', cover_url: '' });
-    } catch (e: any) { alert('خطا: ' + e.message); } finally { setIsSaving(false); }
+        // ریست فرم
+        setFormData({ title: '', slug: '', summary: '', content: '', category: 'تکنولوژی', read_time: '۵ دقیقه', cover_url: '', source_url: '' });
+        
+    } catch (e: any) { 
+        alert('خطا در ذخیره: ' + e.message); 
+    } finally { 
+        setIsSaving(false); 
+    }
   };
 
   const handleChange = (e: any) => {
@@ -124,10 +143,11 @@ export default function AdminPage() {
     if (!error) { setAllArticles(allArticles.filter(a => !selectedIds.includes(a.id))); setSelectedIds([]); alert('🗑️ پاک شدند!'); }
   };
 
+  // --- صفحه لاگین ---
   if (!isAuthenticated) return (
     <div className="min-h-screen flex items-center justify-center p-4 font-vazir relative overflow-hidden bg-[#050505]" dir="rtl">
         <div className="fixed inset-0 overflow-hidden pointer-events-none">
-            <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-[600px] h-[600px] bg-green-600/20 blur-[150px] rounded-full opacity-60" />
+            <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-[1000px] h-[600px] bg-green-600/20 blur-[150px] rounded-full opacity-60" />
             <div className="absolute bottom-0 right-0 w-[500px] h-[500px] bg-blue-600/10 blur-[150px] rounded-full opacity-40" />
         </div>
         
@@ -165,24 +185,10 @@ export default function AdminPage() {
         </div>
 
         <div className="flex justify-center md:justify-start gap-4 mb-12">
-            <button 
-                onClick={() => setActiveTab('editor')} 
-                className={`px-8 py-3 rounded-2xl font-bold transition-all text-sm flex items-center gap-2 border ${
-                    activeTab === 'editor' 
-                    ? 'bg-green-600 text-black border-green-500 shadow-[0_0_20px_-5px_rgba(34,197,94,0.4)]' 
-                    : 'bg-white/5 text-gray-400 border-white/5 hover:bg-white/10 hover:text-white'
-                }`}
-            >
+            <button onClick={() => setActiveTab('editor')} className={`px-8 py-3 rounded-2xl font-bold transition-all text-sm flex items-center gap-2 border ${activeTab === 'editor' ? 'bg-green-600 text-black border-green-500 shadow-[0_0_20px_-5px_rgba(34,197,94,0.4)]' : 'bg-white/5 text-gray-400 border-white/5 hover:bg-white/10 hover:text-white'}`}>
                 <Code size={18}/> ایمپورت
             </button>
-            <button 
-                onClick={() => setActiveTab('manage')} 
-                className={`px-8 py-3 rounded-2xl font-bold transition-all text-sm flex items-center gap-2 border ${
-                    activeTab === 'manage' 
-                    ? 'bg-green-600 text-black border-green-500 shadow-[0_0_20px_-5px_rgba(34,197,94,0.4)]' 
-                    : 'bg-white/5 text-gray-400 border-white/5 hover:bg-white/10 hover:text-white'
-                }`}
-            >
+            <button onClick={() => setActiveTab('manage')} className={`px-8 py-3 rounded-2xl font-bold transition-all text-sm flex items-center gap-2 border ${activeTab === 'manage' ? 'bg-green-600 text-black border-green-500 shadow-[0_0_20px_-5px_rgba(34,197,94,0.4)]' : 'bg-white/5 text-gray-400 border-white/5 hover:bg-white/10 hover:text-white'}`}>
                 <Settings size={18}/> مدیریت
             </button>
         </div>
@@ -199,61 +205,21 @@ export default function AdminPage() {
                         اعمال <ArrowDown size={14} className="inline"/>
                     </button>
                 </div>
-                <textarea 
-                    value={jsonInput} 
-                    onChange={(e) => setJsonInput(e.target.value)} 
-                    placeholder='{ "title": "...", "content": "..." }' 
-                    className="w-full bg-black/30 border border-white/5 rounded-2xl p-6 text-sm font-mono text-green-300 min-h-[120px] focus:outline-none focus:border-green-500/30 transition-all dir-ltr text-left placeholder-gray-700 leading-relaxed"
-                />
+                <textarea value={jsonInput} onChange={(e) => setJsonInput(e.target.value)} placeholder='{ "title": "...", "content": "..." }' className="w-full bg-black/30 border border-white/5 rounded-2xl p-6 text-sm font-mono text-green-300 min-h-[120px] focus:outline-none focus:border-green-500/30 transition-all dir-ltr text-left placeholder-gray-700 leading-relaxed"/>
             </div>
 
             <div className="glass p-8 md:p-12 rounded-[2.5rem] space-y-8 border border-white/5">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div className="space-y-3">
-                        <label className="text-xs text-gray-500 font-bold px-1 uppercase tracking-wider">عنوان</label>
-                        <input name="title" value={formData.title} onChange={handleChange} className="w-full bg-white/5 border border-white/5 rounded-2xl p-4 focus:border-green-500/50 outline-none transition-colors text-white placeholder-gray-700 focus:bg-black/40"/>
-                    </div>
-                    <div className="space-y-3">
-                        <label className="text-xs text-gray-500 font-bold px-1 uppercase tracking-wider">دسته‌بندی</label>
-                        <select name="category" value={formData.category} onChange={handleChange} className="w-full bg-white/5 border border-white/5 rounded-2xl p-4 focus:border-green-500/50 outline-none text-gray-300 cursor-pointer appearance-none focus:bg-black/40">
-                            <option>تکنولوژی</option>
-                            <option>هک و امنیت</option>
-                            <option>هوش مصنوعی</option>
-                            <option>برنامه‌نویسی</option>
-                            <option>استارتاپ</option>
-                            <option>توسعه فردی</option>
-                        </select>
-                    </div>
+                    <div className="space-y-3"><label className="text-xs text-gray-500 font-bold px-1 uppercase tracking-wider">عنوان</label><input name="title" value={formData.title} onChange={handleChange} className="w-full bg-white/5 border border-white/5 rounded-2xl p-4 focus:border-green-500/50 outline-none transition-colors text-white placeholder-gray-700 focus:bg-black/40"/></div>
+                    <div className="space-y-3"><label className="text-xs text-gray-500 font-bold px-1 uppercase tracking-wider">دسته‌بندی</label><select name="category" value={formData.category} onChange={handleChange} className="w-full bg-white/5 border border-white/5 rounded-2xl p-4 focus:border-green-500/50 outline-none text-gray-300 cursor-pointer appearance-none focus:bg-black/40"><option>تکنولوژی</option><option>هک و امنیت</option><option>هوش مصنوعی</option><option>برنامه‌نویسی</option><option>استارتاپ</option><option>توسعه فردی</option></select></div>
                 </div>
-
-                <div className="space-y-3">
-                    <label className="text-xs text-gray-500 font-bold px-1 uppercase tracking-wider">خلاصه</label>
-                    <textarea name="summary" value={formData.summary} onChange={handleChange} className="w-full bg-white/5 border border-white/5 rounded-2xl p-4 focus:border-green-500/50 outline-none h-28 resize-none text-white placeholder-gray-700 focus:bg-black/40"/>
-                </div>
-
-                <div className="space-y-3">
-                    <label className="text-xs text-gray-500 font-bold px-1 uppercase tracking-wider">متن (Markdown)</label>
-                    <textarea name="content" value={formData.content} onChange={handleChange} className="w-full bg-white/5 border border-white/5 rounded-2xl p-6 focus:border-green-500/50 outline-none min-h-[400px] font-mono text-sm leading-relaxed text-gray-300 placeholder-gray-700 focus:bg-black/40"/>
-                </div>
-
+                <div className="space-y-3"><label className="text-xs text-gray-500 font-bold px-1 uppercase tracking-wider">خلاصه</label><textarea name="summary" value={formData.summary} onChange={handleChange} className="w-full bg-white/5 border border-white/5 rounded-2xl p-4 focus:border-green-500/50 outline-none h-28 resize-none text-white placeholder-gray-700 focus:bg-black/40"/></div>
+                <div className="space-y-3"><label className="text-xs text-gray-500 font-bold px-1 uppercase tracking-wider">متن (Markdown)</label><textarea name="content" value={formData.content} onChange={handleChange} className="w-full bg-white/5 border border-white/5 rounded-2xl p-6 focus:border-green-500/50 outline-none min-h-[400px] font-mono text-sm leading-relaxed text-gray-300 placeholder-gray-700 focus:bg-black/40"/></div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    <div className="space-y-3">
-                        <label className="text-xs text-gray-500 font-bold px-1 uppercase tracking-wider">لینک عکس</label>
-                        <input name="cover_url" value={formData.cover_url} onChange={handleChange} className="w-full bg-white/5 border border-white/5 rounded-2xl p-4 focus:border-green-500/50 outline-none dir-ltr text-left text-white placeholder-gray-700 focus:bg-black/40"/>
-                    </div>
-                    <div className="space-y-3">
-                        <label className="text-xs text-gray-500 font-bold px-1 uppercase tracking-wider">اسلاگ</label>
-                        <input name="slug" value={formData.slug} onChange={handleChange} className="w-full bg-white/5 border border-white/5 rounded-2xl p-4 focus:border-green-500/50 outline-none dir-ltr text-left text-white placeholder-gray-700 focus:bg-black/40"/>
-                    </div>
+                    <div className="space-y-3"><label className="text-xs text-gray-500 font-bold px-1 uppercase tracking-wider">لینک عکس</label><input name="cover_url" value={formData.cover_url} onChange={handleChange} className="w-full bg-white/5 border border-white/5 rounded-2xl p-4 focus:border-green-500/50 outline-none dir-ltr text-left text-white placeholder-gray-700 focus:bg-black/40"/></div>
+                    <div className="space-y-3"><label className="text-xs text-gray-500 font-bold px-1 uppercase tracking-wider">اسلاگ</label><input name="slug" value={formData.slug} onChange={handleChange} className="w-full bg-white/5 border border-white/5 rounded-2xl p-4 focus:border-green-500/50 outline-none dir-ltr text-left text-white placeholder-gray-700 focus:bg-black/40"/></div>
                 </div>
-
-                <button 
-                    onClick={handleSave} 
-                    disabled={isSaving} 
-                    className="w-full bg-green-600 hover:bg-green-500 text-black py-5 rounded-2xl font-bold text-lg shadow-lg hover:shadow-green-500/30 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 transition-all transform hover:scale-[1.01]"
-                >
-                    {isSaving ? <><Loader2 className="animate-spin"/> در حال انتشار...</> : <><Save/> انتشار نهایی</>}
-                </button>
+                <button onClick={handleSave} disabled={isSaving} className="w-full bg-green-600 hover:bg-green-500 text-black py-5 rounded-2xl font-bold text-lg shadow-lg hover:shadow-green-500/30 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 transition-all transform hover:scale-[1.01]">{isSaving ? <><Loader2 className="animate-spin"/> در حال انتشار...</> : <><Save/> انتشار نهایی</>}</button>
             </div>
           </div>
         )}
@@ -261,41 +227,14 @@ export default function AdminPage() {
         {activeTab === 'manage' && (
           <div className="space-y-6 animate-in fade-in max-w-5xl mx-auto">
              <div className="flex justify-between items-center glass p-6 rounded-[2rem] text-sm border border-white/5 shadow-xl">
-                <div className="flex items-center gap-4">
-                    <button onClick={toggleSelectAll} className="flex items-center gap-2 text-green-400 hover:text-white font-bold transition-colors">
-                        {selectedIds.length === allArticles.length && allArticles.length > 0 ? <CheckSquare size={22}/> : <Square size={22}/>} 
-                        انتخاب همه
-                    </button>
-                    <span className="text-gray-600 text-xl">|</span>
-                    <span className="text-white font-bold">{selectedIds.length} مقاله</span>
-                </div>
-                {selectedIds.length > 0 && (
-                    <button onClick={deleteSelected} className="flex items-center gap-2 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white px-6 py-3 rounded-xl font-bold transition-all border border-red-500/20">
-                        <Trash2 size={18}/> حذف
-                    </button>
-                )}
+                <div className="flex items-center gap-4"><button onClick={toggleSelectAll} className="flex items-center gap-2 text-green-400 hover:text-white font-bold transition-colors">{selectedIds.length === allArticles.length && allArticles.length > 0 ? <CheckSquare size={22}/> : <Square size={22}/>} انتخاب همه</button><span className="text-gray-600 text-xl">|</span><span className="text-white font-bold">{selectedIds.length} مقاله</span></div>
+                {selectedIds.length > 0 && (<button onClick={deleteSelected} className="flex items-center gap-2 bg-red-500/10 hover:bg-red-500 text-red-400 hover:text-white px-6 py-3 rounded-xl font-bold transition-all border border-red-500/20"><Trash2 size={18}/> حذف</button>)}
              </div>
-
              <div className="grid gap-4">
                 {allArticles.map(article => (
                 <div key={article.id} className={`bg-[#0a0a0a]/60 backdrop-blur-md p-6 rounded-[2rem] flex items-center justify-between group transition-all border border-white/5 hover:border-green-500/30 ${selectedIds.includes(article.id) ? 'border-green-500/50 bg-green-900/10' : ''}`}>
-                    <div className="flex items-center gap-6 overflow-hidden">
-                        <button onClick={() => toggleSelect(article.id)} className={`text-gray-600 hover:text-green-400 transition-colors ${selectedIds.includes(article.id) ? 'text-green-500' : ''}`}>
-                            {selectedIds.includes(article.id) ? <CheckSquare size={26}/> : <Square size={26}/>}
-                        </button>
-                        <div>
-                            <h3 className="font-bold text-white text-lg truncate max-w-md mb-2">{article.title}</h3>
-                            <div className="flex gap-4 text-xs text-gray-400">
-                                <span>{new Date(article.created_at).toLocaleDateString('fa-IR')}</span>
-                                <span className="bg-white/5 px-3 py-0.5 rounded-full border border-white/5 text-gray-300">{article.category}</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div className="flex gap-3">
-                        <Link href={`/article?id=${article.slug || article.id}`} target="_blank" className="p-3 bg-white/5 rounded-2xl hover:bg-green-500 hover:text-black text-green-400 transition-all border border-white/5 hover:border-green-500 shadow-lg" title="مشاهده">
-                            <Eye size={22}/>
-                        </Link>
-                    </div>
+                    <div className="flex items-center gap-6 overflow-hidden"><button onClick={() => toggleSelect(article.id)} className={`text-gray-600 hover:text-green-400 transition-colors ${selectedIds.includes(article.id) ? 'text-green-500' : ''}`}>{selectedIds.includes(article.id) ? <CheckSquare size={26}/> : <Square size={26}/>}</button><div><h3 className="font-bold text-white text-lg truncate max-w-md mb-2">{article.title}</h3><div className="flex gap-4 text-xs text-gray-400"><span>{new Date(article.created_at).toLocaleDateString('fa-IR')}</span><span className="bg-white/5 px-3 py-0.5 rounded-full border border-white/5 text-gray-300">{article.category}</span></div></div></div>
+                    <div className="flex gap-3"><Link href={`/article?id=${article.slug || article.id}`} target="_blank" className="p-3 bg-white/5 rounded-2xl hover:bg-green-500 hover:text-black text-green-400 transition-all border border-white/5 hover:border-green-500 shadow-lg" title="مشاهده"><Eye size={22}/></Link></div>
                 </div>
                 ))}
              </div>
