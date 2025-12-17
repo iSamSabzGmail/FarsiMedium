@@ -7,23 +7,43 @@ import { Search, Clock, ArrowLeft, Sparkles, Send, CheckCircle2, Zap, Layers } f
 import Link from 'next/link';
 import Navbar from '@/components/Navbar';
 
+// لیست عکس‌های پیش‌فرض (اگر مقاله‌ای عکس نداشت)
+const FALLBACK_IMAGES = [
+  "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=800&q=80", // تکنولوژی
+  "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&w=800&q=80", // امنیت
+  "https://images.unsplash.com/photo-1555949963-ff9fe0c870eb?auto=format&fit=crop&w=800&q=80", // کدنویسی
+  "https://images.unsplash.com/photo-1620712943543-bcc4688e7485?auto=format&fit=crop&w=800&q=80", // هوش مصنوعی
+  "https://images.unsplash.com/photo-1519389950473-47ba0277781c?auto=format&fit=crop&w=800&q=80", // تیم و کار
+];
+
 export default function Home() {
   const [articles, setArticles] = useState<any[]>([]);
+  const [categories, setCategories] = useState<string[]>(['همه']); // لیست دینامیک
   const [searchQuery, setSearchQuery] = useState('');
   const [requestUrl, setRequestUrl] = useState('');
   const [requestStatus, setRequestStatus] = useState<'idle' | 'loading' | 'success'>('idle');
   
-  // دسته‌بندی انتخاب شده (پیش‌فرض: همه)
   const [selectedCategory, setSelectedCategory] = useState('همه');
 
-  // لیست دسته‌بندی‌ها
-  const categories = ['همه', 'تکنولوژی', 'هک و امنیت', 'هوش مصنوعی', 'برنامه‌نویسی', 'استارتاپ', 'توسعه فردی'];
-
   useEffect(() => {
-    supabase.from('articles').select('id, title, summary, category, created_at, cover_url, slug, read_time')
-      .eq('published', true).order('created_at', { ascending: false })
-      .then(({ data }) => setArticles(data || []));
+    fetchData();
   }, []);
+
+  const fetchData = async () => {
+    const { data } = await supabase
+      .from('articles')
+      .select('id, title, summary, category, created_at, cover_url, slug, read_time')
+      .eq('published', true)
+      .order('created_at', { ascending: false });
+    
+    if (data) {
+      setArticles(data);
+      
+      // ⚡️ استخراج خودکار دسته‌بندی‌ها از مقالات موجود
+      const uniqueCategories = Array.from(new Set(data.map(a => a.category).filter(Boolean)));
+      setCategories(['همه', ...uniqueCategories]);
+    }
+  };
 
   const submitRequest = async () => {
     if (!requestUrl) return;
@@ -34,7 +54,7 @@ export default function Home() {
     setRequestUrl('');
   };
 
-  // فیلتر ترکیبی (سرچ + دسته‌بندی)
+  // فیلتر ترکیبی
   const filtered = articles.filter(a => {
     const matchesSearch = a.title.includes(searchQuery);
     const matchesCategory = selectedCategory === 'همه' || a.category === selectedCategory;
@@ -44,7 +64,7 @@ export default function Home() {
   return (
     <div className="min-h-screen text-white font-vazir relative selection:bg-green-500/30 selection:text-green-200" dir="rtl">
       
-      {/* نورپردازی پس‌زمینه */}
+      {/* نورپردازی */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
           <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-[1000px] h-[600px] bg-green-600/15 blur-[130px] rounded-full opacity-60 mix-blend-screen animate-pulse" />
           <div className="absolute bottom-[-10%] right-[-10%] w-[800px] h-[600px] bg-blue-600/10 blur-[150px] rounded-full opacity-40" />
@@ -55,7 +75,7 @@ export default function Home() {
 
       <main className="max-w-7xl mx-auto px-4 md:px-6 pt-32 pb-20 relative z-10">
         
-        {/* --- بخش هیرو (Hero) --- */}
+        {/* --- هیرو --- */}
         <div className="text-center max-w-5xl mx-auto mb-20">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full glass text-green-400 text-xs font-bold mb-8 shadow-[0_0_30px_-5px_rgba(34,197,94,0.3)] border-green-500/20">
             <Zap size={14} fill="currentColor"/> <span>پلتفرم جامع تکنولوژی</span>
@@ -70,14 +90,13 @@ export default function Home() {
             بهترین مقالات Medium را در حوزه‌های تکنولوژی، هوش مصنوعی و توسعه فردی گلچین و ترجمه می‌کنیم.
           </p>
 
-          {/* جستجو */}
           <div className="relative max-w-2xl mx-auto group">
             <div className="absolute inset-0 bg-green-500/30 blur-3xl rounded-full opacity-20 group-hover:opacity-40 transition-opacity duration-500" />
             <div className="relative flex items-center glass rounded-2xl px-4 py-3 focus-within:border-green-500/50 transition-all shadow-2xl">
               <Search className="text-gray-400 mr-2" size={24}/>
               <input 
                 type="text" 
-                placeholder="جستجو کنید (مثلا: هوش مصنوعی، هک، استارتاپ...)" 
+                placeholder="جستجو کنید..." 
                 className="bg-transparent border-none outline-none text-white w-full h-full px-2 placeholder-gray-500 text-lg font-medium"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -86,7 +105,7 @@ export default function Home() {
           </div>
         </div>
 
-        {/* --- تب‌های دسته‌بندی (جدید) --- */}
+        {/* --- تب‌های دسته‌بندی (اتوماتیک) --- */}
         <div className="mb-12 overflow-x-auto pb-4 scrollbar-hide">
             <div className="flex justify-center gap-3 min-w-max px-4">
                 {categories.map(cat => (
@@ -108,11 +127,16 @@ export default function Home() {
         {/* --- لیست مقالات --- */}
         {filtered.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-32">
-            {filtered.map((article) => (
+            {filtered.map((article, index) => (
                 <Link key={article.id} href={`/article?id=${article.slug || article.id}`} className="group relative flex flex-col glass rounded-[2.5rem] overflow-hidden hover:-translate-y-2 transition-all duration-500">
                 
                 <div className="aspect-[16/10] relative overflow-hidden m-2 rounded-[2rem]">
-                    <img src={article.cover_url || "https://images.unsplash.com/photo-1620712943543-bcc4688e7485?auto=format&fit=crop&w=800&q=80"} alt={article.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"/>
+                    {/* ⚡️ نمایش عکس پیش‌فرض اگر کاور نداشت */}
+                    <img 
+                      src={article.cover_url || FALLBACK_IMAGES[index % FALLBACK_IMAGES.length]} 
+                      alt={article.title} 
+                      className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                    />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-60" />
                     <span className="absolute top-4 right-4 bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-xl text-[11px] font-bold text-white border border-white/10 shadow-lg">
                     {article.category}
@@ -140,8 +164,7 @@ export default function Home() {
         ) : (
             <div className="text-center py-20 glass rounded-[3rem] mb-32 border border-white/5">
                 <Layers size={48} className="mx-auto text-gray-600 mb-4 opacity-50"/>
-                <p className="text-gray-400 text-lg">مقاله‌ای در این دسته‌بندی یافت نشد.</p>
-                <button onClick={() => setSelectedCategory('همه')} className="mt-4 text-green-400 hover:text-green-300 font-bold">مشاهده همه مقالات</button>
+                <p className="text-gray-400 text-lg">مقاله‌ای یافت نشد.</p>
             </div>
         )}
 
@@ -152,8 +175,8 @@ export default function Home() {
              
              <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(#fff 1px, transparent 1px)', backgroundSize: '30px 30px' }}></div>
 
-             <h2 className="text-3xl md:text-4xl font-black mb-6 text-white relative z-10">مقاله‌ای در نظر دارید؟</h2>
-             <p className="text-gray-300 mb-10 text-base max-w-lg mx-auto leading-8 relative z-10">لینک مقاله مدیوم (Medium) را ارسال کنید تا ترجمه شود.</p>
+             <h2 className="text-3xl md:text-4xl font-black mb-6 text-white relative z-10">درخواست مقاله</h2>
+             <p className="text-gray-300 mb-10 text-base max-w-lg mx-auto leading-8 relative z-10">لینک مقاله را بفرستید تا ما ترجمه کنیم.</p>
              
              <div className="flex flex-col sm:flex-row gap-4 relative z-10">
                <input 

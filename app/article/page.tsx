@@ -35,13 +35,11 @@ function ArticleViewer() {
   return (
     <div className="min-h-screen text-gray-200 font-vazir pb-20 selection:bg-green-500/30 selection:text-green-200 relative" dir="rtl">
       
-      {/* --- نورپردازی سراسری (کپی شده از صفحه اصلی) --- */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
           <div className="absolute top-[-10%] left-1/2 -translate-x-1/2 w-[1000px] h-[600px] bg-green-600/15 blur-[130px] rounded-full opacity-60 mix-blend-screen animate-pulse" />
           <div className="absolute bottom-[-10%] right-[-10%] w-[800px] h-[600px] bg-blue-600/10 blur-[150px] rounded-full opacity-40" />
       </div>
 
-      {/* نوار پیشرفت */}
       <motion.div 
         className="fixed top-0 left-0 right-0 h-1 bg-green-500 z-[100] shadow-[0_0_15px_rgba(34,197,94,0.8)] origin-right" 
         style={{ scaleX }}
@@ -52,11 +50,7 @@ function ArticleViewer() {
 
       <article className="max-w-5xl mx-auto px-4 md:px-8 mt-32 relative z-10">
         
-        {/* کانتینر مقاله (حالا کاملاً شیشه‌ای است) */}
         <div className="glass rounded-[2.5rem] p-6 md:p-16 relative overflow-hidden border border-white/10">
-          
-          {/* پترن نقطه‌ای خیلی محو */}
-          <div className="absolute inset-0 opacity-5 pointer-events-none" style={{ backgroundImage: 'radial-gradient(#fff 1px, transparent 1px)', backgroundSize: '20px 20px' }}></div>
           
           <header className="mb-14 text-center relative z-10">
             <span className="text-green-400 text-xs md:text-sm font-bold bg-green-500/10 px-4 py-1.5 rounded-full border border-green-500/10 mb-6 inline-block shadow-[0_0_15px_-5px_rgba(34,197,94,0.3)]">
@@ -72,20 +66,20 @@ function ArticleViewer() {
             </div>
           </header>
 
-          {article.cover_url && (
-            <div className="mb-16 rounded-[2rem] overflow-hidden shadow-2xl border border-white/5 relative group w-full aspect-video">
-                <div className="absolute inset-0 bg-green-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none mix-blend-overlay"></div>
-                <img src={article.cover_url} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000" alt="cover"/>
-            </div>
-          )}
+          {/* عکس مقاله یا عکس پیش‌فرض */}
+          <div className="mb-16 rounded-[2rem] overflow-hidden shadow-2xl border border-white/5 relative group w-full aspect-video">
+              <img 
+                src={article.cover_url || "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?auto=format&fit=crop&w=1200&q=80"} 
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-1000" 
+                alt="cover"
+              />
+          </div>
 
-          {/* متن اصلی */}
           <div className="prose prose-lg md:prose-xl prose-invert max-w-none 
                 prose-headings:text-white prose-headings:font-bold prose-headings:tracking-tighter
                 prose-p:text-gray-300 prose-p:leading-10 prose-p:font-light prose-p:text-justify
                 prose-a:text-green-400 prose-a:no-underline hover:prose-a:underline
                 prose-strong:text-white prose-strong:font-bold
-                prose-li:text-gray-300
                 relative z-10">
             <ReactMarkdown rehypePlugins={[rehypeHighlight]}>
                 {article.content}
